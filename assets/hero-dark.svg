@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" width="880" height="300"
+     font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+     role="img" aria-label="TaintTrace — 计算 Agent 工具调用图中一次 Prompt Injection 的爆炸半径">
+  <defs>
+    <linearGradient id="hg-d" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF6166"/>
+      <stop offset="1" stop-color="#FFC761"/>
+    </linearGradient>
+    <marker id="hah-d" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#FF6166"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="880" height="300" fill="#1D1D1F"/>
+
+  <g opacity="0.95">
+    <line x1="118" y1="92" x2="170" y2="92" stroke="#3A3A44" stroke-width="2" marker-end="url(#hah-d)"/>
+    <line x1="222" y1="92" x2="274" y2="92" stroke="#FF6166" stroke-width="2.4" marker-end="url(#hah-d)"/>
+    <line x1="326" y1="92" x2="378" y2="92" stroke="#FF6166" stroke-width="2.4" marker-end="url(#hah-d)"/>
+    <line x1="430" y1="92" x2="482" y2="92" stroke="#FF6166" stroke-width="2.4" marker-end="url(#hah-d)"/>
+
+    <circle cx="100"  cy="92" r="16" fill="#2DC79A" fill-opacity="0.20" stroke="#2DC79A" stroke-width="1.6"/>
+    <circle cx="204" cy="92" r="18" fill="#FF6166" fill-opacity="0.26" stroke="#FF6166" stroke-width="2"/>
+    <circle cx="308" cy="92" r="16" fill="#FF6166" fill-opacity="0.20" stroke="#FF6166" stroke-width="1.6"/>
+    <circle cx="412" cy="92" r="16" fill="#FF6166" fill-opacity="0.20" stroke="#FF6166" stroke-width="1.6"/>
+    <circle cx="500" cy="92" r="18" fill="#FF6166" fill-opacity="0.30" stroke="#FF6166" stroke-width="2"/>
+    <text x="204" y="97" text-anchor="middle" font-size="15" font-weight="700" fill="#FFD2D2">!</text>
+    <text x="500" y="97" text-anchor="middle" font-size="13" font-weight="700" fill="#FFD2D2">⨉</text>
+  </g>
+
+  <text x="60" y="178" font-size="62" font-weight="800" fill="url(#hg-d)" letter-spacing="-1.5">TaintTrace</text>
+  <text x="62" y="216" font-size="20" font-weight="600" fill="#F5F5F7">给自主 Agent 装上动态污点追踪</text>
+  <text x="62" y="246" font-size="15.5" font-weight="500" fill="#A1A1A8">沿工具调用图标记被投毒输入影响过的每一个下游动作，秒级算出 Prompt Injection 的爆炸半径</text>
+
+  <g font-size="12.5" font-weight="600">
+    <rect x="62"  y="262" width="118" height="24" rx="12" fill="#FF6166" fill-opacity="0.18" stroke="#FF6166" stroke-width="1"/>
+    <text x="121"  y="278" text-anchor="middle" fill="#FFB3B5">Prompt Injection</text>
+    <rect x="190" y="262" width="78" height="24" rx="12" fill="#8985FF" fill-opacity="0.18" stroke="#8985FF" stroke-width="1"/>
+    <text x="229" y="278" text-anchor="middle" fill="#C7C4FF">Agent</text>
+    <rect x="278" y="262" width="118" height="24" rx="12" fill="#2DC79A" fill-opacity="0.18" stroke="#2DC79A" stroke-width="1"/>
+    <text x="337" y="278" text-anchor="middle" fill="#8FE6CE">Blast Radius</text>
+  </g>
+</svg>

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local agent assistant config
+.claude/
+CLAUDE.md
+
+# Generated trace from running the demo
+run.jsonl
+
+# build scratch
+.build_metadata*
+.build_sections_workflow.js
+.builder_*
+.stage_*
+.spawn.*
+BUILD_SETUP_NEXT_STEPS.md
+PUBLISH_BLOCKED.md
