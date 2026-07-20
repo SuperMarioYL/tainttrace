@@ -9,7 +9,7 @@
 <p><sub>TaintTrace 是一个污点追踪工具：当一次 Prompt Injection 落地，它沿 Agent 工具调用图算出这次注入的爆炸半径。</sub></p>
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-black.svg" alt="License"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-black.svg" alt="License"></a>
   <a href="https://github.com/SuperMarioYL/tainttrace/releases"><img src="https://img.shields.io/github/v/release/SuperMarioYL/tainttrace" alt="Release"></a>
   <a href="https://github.com/SuperMarioYL/tainttrace/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/SuperMarioYL/tainttrace/ci.yml?branch=main&label=ci" alt="CI"></a>
   <img src="https://img.shields.io/badge/python-3.12-blue.svg" alt="Python">
