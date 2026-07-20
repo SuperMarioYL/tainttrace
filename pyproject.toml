@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Dynamic taint tracking that computes the blast radius of a landed prompt injection across an agent's tool-call graph."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [
     { name = "supermario_leo", email = "leo.stack@outlook.com" },
 ]
@@ -25,7 +25,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
