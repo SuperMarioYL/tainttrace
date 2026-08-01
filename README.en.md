@@ -145,6 +145,9 @@ Guardrails and input filters do one thing: block suspicious input at the boundar
 - [x] **m1** — taint labels attach to untrusted inputs and propagate through the recorded tool graph
 - [x] **m2** — given an incident, compute the transitive set of tainted actions and emit a quarantine report
 - [x] **m3** — drop-in wrapper + sub-60s poisoned-web example producing a red quarantine list
+- [x] **v0.2.0** — `@tracked` supports `async def` tools (async agents like httpx/aiohttp now work)
+- [x] **v0.2.0** — `tainttrace report --source <id>` scopes the blast radius to a single injection (composes with `--json`)
+- [x] **v0.2.0** — fixed `Tracker` context-manager save/restore; `report` gives a clean error on a malformed JSONL line
 - [ ] Auto-instrumentation of popular agent frameworks (LangChain / LlamaIndex tool-call layer)
 - [ ] Multi-agent fleet attribution + cross-session diff
 - [ ] Incident-review dashboard (taint-graph visualization)

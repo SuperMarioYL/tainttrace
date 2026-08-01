@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-01
+
+Iteration over v0.1.0. File-only demand (0 open GitHub issues/PRs); milestones
+anchored on bug-hunt defects over the shipped source plus self-proposed
+in-scope optimizations, not external prescription.
+
+### Fixed
+- **`Tracker.activate()`/`deactivate()` restore the previous recorder**
+  (`fix-tracker-deactivate-restore`, HIGH). `use_recorder(X)` returns the recorder
+  you just set, so `activate()` previously captured `self` as `_previous` and
+  `deactivate()` left the tracker active, never restoring the prior recorder.
+  Now captures the active recorder *before* swapping. The documented
+  `use_recorder(X) -> X` contract is preserved.
+- **`tainttrace report` handles malformed JSONL lines** (`fix-cli-malformed-json-trace`,
+  MEDIUM). A single corrupt/truncated line (a killed-process partial write)
+  raised an uncaught `ValueError` traceback. The CLI now catches it, prints a
+  bold-red file:line error, and exits 2. `--strict` surfaces the raw offending
+  line content.
+
+### Added
+- **`@tracked` supports `async def` tools** (`m4_async_tracked`). v0.1 called
+  `func(*args)` synchronously, so an `async def` tool's body never ran and its
+  result was recorded as `repr(coroutine)`, losing the taint. `@tracked` now
+  detects coroutine functions and emits an `async` wrapper that `await`s the
+  tool, propagates taint on the awaited result, and records the call. No new
+  dependencies — async agents (httpx/aiohttp) now work out of the box.
+- **`tainttrace report --source <id>`** (`m5_source_filter_cli`). Exposes the
+  existing `quarantine_from_source` API from the CLI, scoping the blast radius
+  to a single named injection. Composes with `--json`; an unknown source renders
+  the "No untrusted source" error cleanly.
+
+[0.2.0]: https://github.com/SuperMarioYL/tainttrace/releases/tag/v0.2.0
+
 ## [0.1.0] - 2026-06-23
 
 First public release — the m1 + m2 + m3 milestones of the MVP.

@@ -28,7 +28,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .label import (
     EMPTY,
-    TaintLabel,
     TaintSet,
     as_taint_set,
     is_tainted,

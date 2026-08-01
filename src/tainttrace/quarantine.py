@@ -37,7 +37,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from .graph import TaintGraph, ToolCall
 from .label import (
     TaintLabel,
-    TaintSet,
     is_tainted,
     source_ids,
     untrusted_labels,

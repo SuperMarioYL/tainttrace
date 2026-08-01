@@ -30,7 +30,7 @@ from rich.text import Text
 
 from .graph import TaintGraph
 from .quarantine import QuarantineReport
-from .tracker import load_graph, load_report
+from .tracker import load_graph
 
 app = typer.Typer(
     add_completion=False,
@@ -207,20 +207,48 @@ def report(
     show_graph: bool = typer.Option(
         False, "--graph", "-g", help="Also render the full tool-call graph."
     ),
+    source: Optional[str] = typer.Option(
+        None,
+        "--source",
+        help=(
+            "Scope the blast radius to a single named injection source id "
+            "(e.g. web:cve-blog). Composes with --json."
+        ),
+    ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Surface the first malformed JSONL line (raw content) in the error.",
+    ),
 ) -> None:
     """Compute and render the blast radius for a recorded trace."""
     try:
-        graph = load_graph(trace)
+        graph = load_graph(trace, strict=strict)
     except FileNotFoundError:
         err_console.print(
             Text(f"Trace not found: {trace}", style="bold red")
             + Text("\nRecord one with a Tracker, or run `tainttrace demo`.", style="dim")
         )
         raise typer.Exit(code=2)
+    except ValueError as exc:
+        err_console.print(
+            Text("Trace malformed", style="bold red")
+            + Text(f": {exc}", style="red")
+            + Text(
+                "\nFix the trace (or re-record it with a Tracker) before computing "
+                "the blast radius.",
+                style="dim",
+            )
+        )
+        raise typer.Exit(code=2)
 
-    from .quarantine import blast_radius as _blast
+    from .quarantine import blast_radius as _blast, quarantine_from_source as _qfs
 
-    result = _blast(graph)
+    try:
+        result = _qfs(graph, source) if source else _blast(graph)
+    except ValueError as exc:
+        err_console.print(Text(str(exc), style="bold red"))
+        raise typer.Exit(code=2)
 
     if as_json:
         typer.echo(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))

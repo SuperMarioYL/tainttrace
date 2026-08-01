@@ -30,15 +30,15 @@ decorator API is identical.
 from __future__ import annotations
 
 import functools
+import inspect
 import threading
 import time
-from typing import Any, Callable, Iterable, Protocol, TypeVar, runtime_checkable
+from typing import Any, Callable, Protocol, TypeVar, runtime_checkable
 
 from .graph import TaintGraph, ToolCall
 from .label import (
     EMPTY,
     Origin,
-    TaintLabel,
     TaintSet,
     as_taint_set,
     propagate,
@@ -333,6 +333,38 @@ def tracked(
     def decorate(func: F) -> F:
         tool_name = name or getattr(func, "__name__", "tool")
         effect = side_effect if side_effect is not None else _infer_side_effect(tool_name)
+
+        # v0.2 (m4_async_tracked): async tools get an `async` wrapper so the
+        # coroutine is actually awaited (v0.1 recorded a bare coroutine object
+        # and lost the taint). The recording/propagation logic is identical to
+        # the sync path; only the await differs.
+        if inspect.iscoroutinefunction(func):
+
+            @functools.wraps(func)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                in_labels = _collect_in_labels(args, kwargs)
+                result = await func(*args, **kwargs)
+
+                out_labels = propagate(in_labels)
+                if out_labels:
+                    _REGISTRY.mark(result, out_labels)
+
+                recorder = get_recorder()
+                call_id = _make_call_id(recorder, tool_name)
+                call = ToolCall(
+                    id=call_id,
+                    name=tool_name,
+                    args=_safe_args(args, kwargs),
+                    result=_safe_result(result),
+                    in_labels=in_labels,
+                    out_labels=out_labels,
+                    side_effect=effect,
+                    ts=time.time(),
+                )
+                recorder.record(call)
+                return result
+
+            return async_wrapper  # type: ignore[return-value]
 
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:

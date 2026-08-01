@@ -145,6 +145,9 @@ print(report.headline())       # "4 of 11 actions tainted, 7 proven clean"
 - [x] **m1** — 污点标签附着到不可信输入，并沿记录的工具调用图传播
 - [x] **m2** — 给定一次事件，计算被污染动作的传递闭包并产出隔离报告
 - [x] **m3** — 即插即用 wrapper + 60 秒内的被投毒 Web 示例，产出红色隔离清单
+- [x] **v0.2.0** — `@tracked` 支持 `async def` 工具（httpx/aiohttp 等异步 Agent 现在可用）
+- [x] **v0.2.0** — `tainttrace report --source <id>` 按单一注入源圈定爆炸半径（与 `--json` 组合）
+- [x] **v0.2.0** — 修复 `Tracker` 上下文管理器 save/restore；`report` 对损坏的 JSONL 行给出干净报错
 - [ ] 对流行 Agent 框架（LangChain / LlamaIndex 工具调用层）的自动插桩
 - [ ] 多 Agent 队列归因 + 跨会话 diff
 - [ ] 事件复盘 dashboard（污点图可视化）

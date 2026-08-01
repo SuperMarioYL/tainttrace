@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .graph import TaintGraph, ToolCall
-from .label import TaintLabel, TaintSet, as_taint_set
+from .label import TaintLabel, TaintSet
 from .quarantine import QuarantineReport, blast_radius, quarantine_from_source
 from . import wrap as _wrap
 
@@ -45,7 +45,7 @@ def _labels_to_json(labels: TaintSet) -> list[dict[str, Any]]:
     """Serialise a label set to a stable, sorted list of plain dicts."""
     return [
         {"source_id": lbl.source_id, "origin": lbl.origin, "reason": lbl.reason}
-        for lbl in sorted(labels, key=lambda l: (l.source_id, l.origin))
+        for lbl in sorted(labels, key=lambda item: (item.source_id, item.origin))
     ]
 
 
@@ -154,9 +154,15 @@ class Tracker:
         Remembers whatever recorder was active so :meth:`deactivate` can restore
         it. Also clears the taint registry and any process-recorder state so a
         previous run does not bleed into this one.
+
+        Note: :func:`tainttrace.wrap.use_recorder` returns the recorder you just
+        set (not the previously-active one), so the prior recorder must be
+        captured *before* swapping — otherwise ``deactivate`` would restore the
+        tracker itself (v0.2 fix: ``fix-tracker-deactivate-restore``).
         """
         _wrap.reset_run()
-        self._previous = _wrap.use_recorder(self)
+        self._previous = _wrap.get_recorder()
+        _wrap.use_recorder(self)
         return self
 
     def deactivate(self) -> None:
@@ -201,8 +207,14 @@ class Tracker:
 # --------------------------------------------------------------------------- #
 
 
-def _iter_rows(path: str | Path) -> Iterable[dict[str, Any]]:
-    """Yield each non-blank JSON object from a JSONL trace file."""
+def _iter_rows(path: str | Path, *, strict: bool = False) -> Iterable[dict[str, Any]]:
+    """Yield each non-blank JSON object from a JSONL trace file.
+
+    A malformed line raises ``ValueError`` naming the file + line number so the
+    CLI can render a clean error instead of a bare traceback. When ``strict`` is
+    set, the offending line's raw content is appended to the message for
+    debugging (v0.2: ``fix-cli-malformed-json-trace``).
+    """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Trace file not found: {p}")
@@ -213,19 +225,24 @@ def _iter_rows(path: str | Path) -> Iterable[dict[str, Any]]:
                 continue
             try:
                 yield json.loads(line)
-            except json.JSONDecodeError as exc:  # pragma: no cover - defensive
+            except json.JSONDecodeError as exc:
+                if strict:
+                    raise ValueError(
+                        f"{p}:{lineno}: invalid JSON line: {exc}\n  raw: {line!r}"
+                    ) from exc
                 raise ValueError(f"{p}:{lineno}: invalid JSON line: {exc}") from exc
 
 
-def load_graph(path: str | Path) -> TaintGraph:
+def load_graph(path: str | Path, *, strict: bool = False) -> TaintGraph:
     """Rebuild and propagate a :class:`TaintGraph` from a JSONL trace on disk.
 
     This is the offline replay path the CLI uses: ``tainttrace report --trace
     run.jsonl`` loads the trace written during the agent run, re-infers any
     missing data edges, and re-runs propagation so the labels are authoritative
-    regardless of what was persisted.
+    regardless of what was persisted. ``strict`` forwards to :func:`_iter_rows`
+    to surface the raw offending line on a malformed trace.
     """
-    calls = [call_from_json(row) for row in _iter_rows(path)]
+    calls = [call_from_json(row) for row in _iter_rows(path, strict=strict)]
     g = TaintGraph.from_calls(calls)
     g.infer_value_edges()
     g.propagate()
