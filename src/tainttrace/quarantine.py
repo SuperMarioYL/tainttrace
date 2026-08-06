@@ -37,7 +37,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from .graph import TaintGraph, ToolCall
 from .label import (
     TaintLabel,
-    is_tainted,
     source_ids,
     untrusted_labels,
 )
@@ -177,17 +176,47 @@ class QuarantineReport(BaseModel):
 # --------------------------------------------------------------------------- #
 
 
-def _untrusted_source_nodes(graph: TaintGraph) -> list[str]:
+def _untrusted_source_nodes(
+    graph: TaintGraph, *, source_id: str | None = None
+) -> list[str]:
     """Ids of calls that *mint* untrusted taint at their own boundary.
 
-    These are the origin nodes of the blast radius — the calls whose
-    ``source_labels`` or ``in_labels`` carry an untrusted label independent of
-    any predecessor. The injection "lands" here; everything downstream inherits.
+    A call is an origin node iff it carries an untrusted label that is not
+    explainable by an incoming data edge — i.e. the label was minted at this
+    call's boundary (``source_labels``) or attached to an input that no
+    predecessor's ``out_labels`` already carried (the ``@tracked`` registry
+    path, where ``taint_source`` marks a value between recorded calls). Taint
+    a call merely inherited through a data edge does NOT make it a source node
+    — its hop distance is > 0.
+
+    This keeps the hops field and the "closest to injection first" sort correct
+    on real wrapper-generated traces, where ``@tracked`` populates every
+    tainted call's ``in_labels`` from the registry — so naively treating any
+    call with a tainted ``local_in()`` as a source would collapse every hop to
+    0 (v0.3 fix: ``fix-hops-zero-on-wrapper-traces``).
+
+    If ``source_id`` is given, only calls that mint that specific source are
+    returned (used by :func:`quarantine_from_source` for scoped hop distances).
     """
+    preds: dict[str, list[str]] = defaultdict(list)
+    for edge in graph.edges():
+        preds[edge.dst].append(edge.src)
+    index = {c.id: c for c in graph.calls}
+
     out: list[str] = []
     for call in graph.calls:
-        local = call.local_in()
-        if is_tainted(local):
+        inherited = {
+            lbl.source_id
+            for src in preds.get(call.id, [])
+            for lbl in untrusted_labels(index[src].out_labels)
+        }
+        # Origins = boundary-minted (source_labels) + in_labels taint no
+        # predecessor's out_labels already carried.
+        origins = source_ids(untrusted_labels(call.source_labels))
+        origins |= source_ids(untrusted_labels(call.in_labels)) - inherited
+        if not origins:
+            continue
+        if source_id is None or source_id in origins:
             out.append(call.id)
     return out
 
@@ -337,12 +366,11 @@ def quarantine_from_source(graph: TaintGraph, source_id: str) -> QuarantineRepor
             f"known sources: {sorted(present) or '[none]'}"
         )
 
-    # Source nodes for *this* source only, for hop distances.
-    source_nodes = [
-        call.id
-        for call in graph.calls
-        if source_id in {label.source_id for label in untrusted_labels(call.local_in())}
-    ]
+    # Source nodes for *this* source only, for hop distances. Uses the same
+    # origin-detection logic as the full blast radius so a wrapper-generated
+    # trace (where every tainted call's in_labels is populated) does not
+    # collapse every hop to 0.
+    source_nodes = _untrusted_source_nodes(graph, source_id=source_id)
     dist = _hop_distances(graph, source_nodes)
 
     tainted: list[TaintedAction] = []

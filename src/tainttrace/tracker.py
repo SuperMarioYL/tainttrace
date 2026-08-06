@@ -210,10 +210,14 @@ class Tracker:
 def _iter_rows(path: str | Path, *, strict: bool = False) -> Iterable[dict[str, Any]]:
     """Yield each non-blank JSON object from a JSONL trace file.
 
-    A malformed line raises ``ValueError`` naming the file + line number so the
-    CLI can render a clean error instead of a bare traceback. When ``strict`` is
-    set, the offending line's raw content is appended to the message for
-    debugging (v0.2: ``fix-cli-malformed-json-trace``).
+    A malformed line — invalid JSON, or valid JSON of the wrong shape (a list,
+    a bare number, or a dict missing the required ``id``/``name`` keys) — raises
+    ``ValueError`` naming the file + line number so the CLI can render a clean
+    error instead of a bare traceback (v0.2: ``fix-cli-malformed-json-trace``
+    for invalid JSON; v0.3: ``fix-cli-non-json-shape-trace-row`` for wrong-shape
+    rows that previously raised an uncaught ``TypeError``/``KeyError``). When
+    ``strict`` is set, the offending line's raw content is appended to the
+    message for debugging.
     """
     p = Path(path)
     if not p.exists():
@@ -224,13 +228,25 @@ def _iter_rows(path: str | Path, *, strict: bool = False) -> Iterable[dict[str, 
             if not line:
                 continue
             try:
-                yield json.loads(line)
+                row = json.loads(line)
             except json.JSONDecodeError as exc:
                 if strict:
                     raise ValueError(
                         f"{p}:{lineno}: invalid JSON line: {exc}\n  raw: {line!r}"
                     ) from exc
                 raise ValueError(f"{p}:{lineno}: invalid JSON line: {exc}") from exc
+            # A valid-JSON-but-wrong-shape row (list, number, or dict missing
+            # id/name) would otherwise raise an uncaught TypeError/KeyError
+            # deep in call_from_json. Validate here so the CLI's ValueError
+            # handler renders the clean "Trace malformed" error (v0.3 fix).
+            if not isinstance(row, dict) or "id" not in row or "name" not in row:
+                detail = "expected a JSON object with 'id' and 'name'"
+                if strict:
+                    raise ValueError(
+                        f"{p}:{lineno}: malformed trace row ({detail})\n  raw: {line!r}"
+                    )
+                raise ValueError(f"{p}:{lineno}: malformed trace row ({detail})")
+            yield row
 
 
 def load_graph(path: str | Path, *, strict: bool = False) -> TaintGraph:

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import re
 import threading
 import time
 from typing import Any, Callable, Protocol, TypeVar, runtime_checkable
@@ -107,12 +108,17 @@ class _TaintRegistry:
 def _is_value_keyable(value: Any) -> bool:
     """True if ``value`` can safely be a dict key for value-based taint lookup.
 
-    Restricted to immutable scalars/strings/tuples: these are the values that
-    actually survive being passed through a tool and compared equal downstream,
-    and they are cheap and safe to hash. Mutable containers are skipped (identity
-    tracking still covers them).
+    Restricted to strings/bytes (and hashable tuples): these are the values
+    that actually survive being passed through a tool and compared equal
+    downstream — the documented "poisoned string surviving a round-trip" case.
+    Scalars (int/float/bool) are deliberately excluded: coincidental value
+    equality (``taint_source(404)`` tainting every later ``404``, or
+    ``taint_source(True)`` tainting every ``True``) is not provenance.
+    Identity tracking (``id()``) still covers the same scalar object passed
+    through; only the unsound value-equality fallback is removed
+    (v0.3 fix: ``fix-registry-scalar-value-collision``).
     """
-    if isinstance(value, (str, bytes, int, float, bool)):
+    if isinstance(value, (str, bytes)):
         return True
     if isinstance(value, tuple):
         try:
@@ -431,12 +437,16 @@ _SIDE_EFFECT_VERBS = (
 def _infer_side_effect(tool_name: str) -> bool:
     """Heuristic: a tool whose name implies a mutation is side-effecting.
 
-    Conservative — only matches a known mutating verb as a word-ish substring of
-    the lowercased name. A read-only tool (``read_url``, ``search``, ``fetch``)
-    returns ``False``. The developer can always override via ``side_effect=``.
+    Matches a known mutating verb as a *token* of the lowercased name (split on
+    non-alphanumeric boundaries), so ``write_file`` and ``commit_changes`` are
+    flagged while ``input_parser`` (contains "put"), ``compute_hash`` (contains
+    "put"), and ``asset_lookup`` (contains "set") are not. A read-only tool
+    (``read_url``, ``search``, ``fetch``) returns ``False``. The developer can
+    always override via ``side_effect=`` (v0.3 fix:
+    ``fix-side-effect-verb-substring-false-positive``).
     """
-    lowered = tool_name.lower()
-    return any(verb in lowered for verb in _SIDE_EFFECT_VERBS)
+    tokens = {t for t in re.split(r"[^a-z0-9]+", tool_name.lower()) if t}
+    return any(verb in tokens for verb in _SIDE_EFFECT_VERBS)
 
 
 def _make_call_id(recorder: Recorder, name: str) -> str:
