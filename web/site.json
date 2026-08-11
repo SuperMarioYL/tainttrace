@@ -39,12 +39,13 @@
         "en": "Labels the poison the moment it lands"
       },
       "body": {
-        "zh": "在不可信内容进入 Agent 的边界就贴上标签——抓取的网页、外部工具返回值——沿工具调用图逐跳传播，谁被染一目了然。同步与异步工具都支持。",
-        "en": "Tags untrusted content at the boundary where it enters your agent — a fetched page, an external tool result — and propagates the label hop by hop through the tool-call graph. Sync and async tools both work."
+        "zh": "在不可信内容进入 Agent 的边界就贴上标签——抓取的网页、外部工具返回值——沿工具调用图逐跳传播，谁被染一目了然。哪怕投毒的值被塞进列表或字典的深处，也会被一层层翻出来打上标签，不会因为藏在容器里就漏网。同步与异步工具都支持。",
+        "en": "Tags untrusted content at the boundary where it enters your agent — a fetched page, an external tool result — and propagates the label hop by hop through the tool-call graph. Even a poisoned value buried deep inside a list or dict is unwrapped layer by layer and labelled, so hiding it in a container can't make it slip through. Sync and async tools both work."
       },
       "chips": [
         "› 标记 web 抓取 / 工具结果",
         "› 沿调用图逐跳传播",
+        "› 嵌套容器里也漏不掉",
         "› 同步与异步工具"
       ]
     },
@@ -60,7 +61,8 @@
       "chips": [
         "› 副作用动作分类",
         "› 按距离排序",
-        "› --json 接 CI"
+        "› --json 接 CI",
+        "› 坏 trace 也只报错不崩"
       ]
     },
     {
@@ -69,8 +71,8 @@
         "en": "Also tells you what's proven clean"
       },
       "body": {
-        "zh": "不只列出被污染的动作——还显式列出没有被任何不可信标签触及的动作，让你清楚什么不用碰。一半的价值在“这里你不用动”。",
-        "en": "Beyond the tainted actions, it explicitly lists the calls no untrusted label ever reached — so you know what to leave alone. Half the value is “here's what you don't have to touch”."
+        "zh": "不只列出被污染的动作——还显式列出没有被任何不可信标签触及的动作，让你清楚什么不用碰。投毒值就算藏在容器参数深处也会被翻出来，所以“清白”集合是真的清白，不是漏算出来的。一半的价值在“这里你不用动”。",
+        "en": "Beyond the tainted actions, it explicitly lists the calls no untrusted label ever reached — so you know what to leave alone. A poisoned value buried inside a container argument is still unwrapped, so the “clean” set is genuinely clean, not merely uncounted. Half the value is “here's what you don't have to touch”."
       },
       "chips": [
         "› 显式 proven-clean 集合",
@@ -93,7 +95,7 @@
     }
   ],
   "scene": {
-    "kind": "mesh",
+    "kind": "hub-nodes",
     "nodes": ["web_fetch", "summarize", "plan", "write_file", "git_commit", "send_message"]
   },
   "cta": {
@@ -102,8 +104,8 @@
       "en": "Next time an injection lands, see the blast radius first — then decide what to roll back."
     },
     "sub": {
-      "zh": "一个装饰器、一个 taint_source 调用，记录一次运行，跑一条 report。Apache 2.0 开源，无付费墙。",
-      "en": "One decorator, one taint_source call, record a run, run report. Apache 2.0 open source, no paywall."
+      "zh": "接入极轻，记一次运行就能复盘整条爆炸半径。Apache 2.0 开源，无付费墙。",
+      "en": "Tiny integration — record one run and replay the full blast radius. Apache 2.0 open source, no paywall."
     },
     "button": {
       "zh": "在 GitHub 上开始",
