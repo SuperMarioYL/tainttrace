@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-08-11
+
+Fix-only bump over v0.3.0. Two high-confidence bug-hunt fixes over the shipped
+source; no new product features.
+
+### Fixed
+- **`@tracked` collects taint nested inside container arguments**
+  (`fix-collect-in-labels-container-args`, MEDIUM). `_collect_in_labels` only
+  looked up each top-level argument by identity/value, so a poisoned string
+  nested inside a list/tuple/dict/set argument (`write_file("x", [poisoned])`,
+  `write_file("p", {"body": poisoned})`) was never registered or looked up →
+  `in_labels=∅` → the side-effecting write was classified proven-clean and
+  dropped from the quarantine list (a soundness false-negative in the core
+  blast-radius promise). Container arguments are now walked recursively (with a
+  cycle guard) so a tainted member one or more levels deep still contributes its
+  labels to the call's `in_labels`.
+- **`tainttrace report` renders a clean error on a malformed nested label
+  array** (`fix-trace-nested-label-shape-crash`, MEDIUM). The v0.3 fix
+  validated only the top-level trace-row shape; `_labels_from_json` still
+  indexed `item["source_id"]` unvalidated, so a row carrying a malformed
+  `in_labels`/`source_labels`/`out_labels` field (a string, an int, a dict, or
+  a list of non-dicts / dicts missing `source_id`) raised an uncaught
+  `TypeError`/`KeyError` — not a `ValueError` — bypassing the "Trace malformed"
+  handler and exiting 1 with an empty error. Each nested label item's shape is
+  now validated (in `_iter_rows` with file:line, and as a defensive guard in
+  `_labels_from_json`) so the CLI renders "Trace malformed" + exit 2, the
+  intended clean path.
+
+[0.4.0]: https://github.com/SuperMarioYL/tainttrace/releases/tag/v0.4.0
+
 ## [0.2.0] - 2026-08-01
 
 Iteration over v0.1.0. File-only demand (0 open GitHub issues/PRs); milestones

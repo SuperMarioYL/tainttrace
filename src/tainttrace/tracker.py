@@ -50,11 +50,31 @@ def _labels_to_json(labels: TaintSet) -> list[dict[str, Any]]:
 
 
 def _labels_from_json(raw: Any) -> TaintSet:
-    """Parse a serialised label list back into a :class:`TaintSet`."""
+    """Parse a serialised label list back into a :class:`TaintSet`.
+
+    Each label item's shape is validated *before* it is indexed: a malformed
+    nested label array — ``raw`` itself not a list (a string, an int, a dict),
+    or an item that is not a dict or is missing ``source_id`` — raises
+    ``ValueError`` rather than an uncaught ``TypeError``/``KeyError``. Because
+    the CLI's ``except ValueError`` handler renders the clean "Trace malformed"
+    error and exits 2, this keeps the v0.3 malformed-trace path intact for
+    nested labels too (v0.4 fix: ``fix-trace-nested-label-shape-crash``).
+    :func:`_iter_rows` performs the same check during iteration and adds the
+    file:line context for the CLI path; this guard is the last line of defence
+    for callers that build a row by hand via :func:`call_from_json`.
+    """
     if not raw:
         return frozenset()
+    if not isinstance(raw, list):
+        raise ValueError(
+            f"malformed label array: expected a list, got {type(raw).__name__}"
+        )
     out: set[TaintLabel] = set()
     for item in raw:
+        if not isinstance(item, dict) or "source_id" not in item:
+            raise ValueError(
+                "malformed label item: expected an object with 'source_id'"
+            )
         out.add(
             TaintLabel(
                 source_id=item["source_id"],
@@ -63,6 +83,29 @@ def _labels_from_json(raw: Any) -> TaintSet:
             )
         )
     return frozenset(out)
+
+
+def _label_array_detail(labels: Any, field: str) -> str | None:
+    """Return a malformed-label-array detail string for ``field``, else ``None``.
+
+    Mirrors the validation in :func:`_labels_from_json` so a bad nested label
+    array is rejected during iteration — with file:line via :func:`_iter_rows` —
+    instead of raising an uncaught ``TypeError``/``KeyError`` later in
+    :func:`call_from_json` (v0.4 fix: ``fix-trace-nested-label-shape-crash``).
+    Returns ``None`` for an absent/empty label field (no labels is not
+    malformed).
+    """
+    if not labels:
+        return None
+    if not isinstance(labels, list):
+        return f"field '{field}' must be a list of label objects"
+    for item in labels:
+        if not isinstance(item, dict) or "source_id" not in item:
+            return (
+                f"field '{field}' has a malformed label item "
+                "(expected an object with 'source_id')"
+            )
+    return None
 
 
 def call_to_json(call: ToolCall) -> dict[str, Any]:
@@ -246,6 +289,26 @@ def _iter_rows(path: str | Path, *, strict: bool = False) -> Iterable[dict[str, 
                         f"{p}:{lineno}: malformed trace row ({detail})\n  raw: {line!r}"
                     )
                 raise ValueError(f"{p}:{lineno}: malformed trace row ({detail})")
+            # A row that passes the shape check above can still carry a
+            # malformed *nested* label array (in_labels/source_labels/
+            # out_labels as a string/int/dict, or a list of non-dicts / dicts
+            # missing source_id). That would raise an uncaught
+            # TypeError/KeyError in call_from_json -> _labels_from_json (a
+            # gap in the v0.3 fix, which validated only the top-level row).
+            # Validate the nested label arrays here too so the same clean
+            # file:line "Trace malformed" + exit 2 path fires (v0.4 fix:
+            # fix-trace-nested-label-shape-crash).
+            for _field in ("in_labels", "source_labels", "out_labels"):
+                _detail = _label_array_detail(row.get(_field), _field)
+                if _detail is not None:
+                    if strict:
+                        raise ValueError(
+                            f"{p}:{lineno}: malformed trace row ({_detail})\n"
+                            f"  raw: {line!r}"
+                        )
+                    raise ValueError(
+                        f"{p}:{lineno}: malformed trace row ({_detail})"
+                    )
             yield row
 
 

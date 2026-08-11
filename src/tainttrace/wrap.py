@@ -285,12 +285,58 @@ def labels_of(value: Any) -> TaintSet:
 
 
 def _collect_in_labels(args: tuple[Any, ...], kwargs: dict[str, Any]) -> TaintSet:
-    """Union of taint labels across every positional and keyword argument."""
+    """Union of taint labels across every positional and keyword argument.
+
+    Each top-level argument is looked up by identity/value as before, *and*
+    container arguments (list/tuple/dict/set/frozenset) are walked recursively
+    so a poisoned value nested one or more levels deep still contributes its
+    labels. Without the recursion, ``write_file("x", [poisoned])`` or
+    ``write_file("p", {"body": poisoned})`` recorded ``in_labels=∅`` because the
+    container itself is never registered — only the tainted string inside it is
+    — so the side-effecting write was classified proven-clean and dropped from
+    quarantine (v0.4 fix: ``fix-collect-in-labels-container-args``).
+    """
     out: TaintSet = EMPTY
     for value in args:
-        out = propagate(out, _REGISTRY.labels_for(value))
+        out = propagate(out, _labels_in_value(value))
     for value in kwargs.values():
-        out = propagate(out, _REGISTRY.labels_for(value))
+        out = propagate(out, _labels_in_value(value))
+    return out
+
+
+def _labels_in_value(value: Any, _seen: set[int] | None = None) -> TaintSet:
+    """Labels on ``value`` itself plus those of any nested container member.
+
+    :func:`_collect_in_labels` calls this instead of ``_REGISTRY.labels_for``
+    directly so taint hidden inside a list/tuple/dict/set is still collected:
+    the registry tracks taint by object identity (and by value for hashable
+    scalars like ``str``), so a container is never registered — only the tainted
+    member inside it is, and it is only found by recursing into the container.
+
+    ``_seen`` guards against cyclic/self-referential containers (a list that
+    contains itself) so the walk terminates; identity dedup keeps a member
+    visited twice from re-expanding. Label sets are a real ``frozenset``, so
+    unioning the same label more than once is already idempotent — the guard is
+    about traversal termination/cost, not label multiplicity (the
+    "do-not-double-count" concern is handled by set union, not by skipping).
+    """
+    out = _REGISTRY.labels_for(value)
+    if not isinstance(value, (list, tuple, dict, set, frozenset)):
+        return out
+    if _seen is None:
+        _seen = set()
+    oid = id(value)
+    if oid in _seen:
+        return out
+    _seen.add(oid)
+    # For a dict, walk both keys and values: a tainted key is a real (if rare)
+    # dataflow case and value-equality lookup catches registered string keys.
+    if isinstance(value, dict):
+        members = (*value.keys(), *value.values())
+    else:
+        members = value
+    for member in members:
+        out = propagate(out, _labels_in_value(member, _seen))
     return out
 
 
