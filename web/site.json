@@ -39,14 +39,15 @@
         "en": "Labels the poison the moment it lands"
       },
       "body": {
-        "zh": "在不可信内容进入 Agent 的边界就贴上标签——抓取的网页、外部工具返回值——沿工具调用图逐跳传播，谁被染一目了然。哪怕投毒的值被塞进列表或字典的深处，也会被一层层翻出来打上标签，不会因为藏在容器里就漏网。同步与异步工具都支持。",
-        "en": "Tags untrusted content at the boundary where it enters your agent — a fetched page, an external tool result — and propagates the label hop by hop through the tool-call graph. Even a poisoned value buried deep inside a list or dict is unwrapped layer by layer and labelled, so hiding it in a container can't make it slip through. Sync and async tools both work."
+        "zh": "在不可信内容进入 Agent 的边界就贴上标签——抓取的网页、外部工具返回值——沿工具调用图逐跳传播，谁被染一目了然。哪怕投毒的值被塞进列表或字典的深处，也会被一层层翻出来打上标签，不会因为藏在容器里就漏网。同步与异步工具都支持，且无论工具返回什么——混合类型、自引用结构——记录都不会中断整条运行。",
+        "en": "Tags untrusted content at the boundary where it enters your agent — a fetched page, an external tool result — and propagates the label hop by hop through the tool-call graph. Even a poisoned value buried deep inside a list or dict is unwrapped layer by layer and labelled, so hiding it in a container can't make it slip through. Sync and async tools both work, and whatever a tool returns — mixed types, self-referential structures — recording never breaks the run."
       },
       "chips": [
         "› 标记 web 抓取 / 工具结果",
         "› 沿调用图逐跳传播",
         "› 嵌套容器里也漏不掉",
-        "› 同步与异步工具"
+        "› 同步与异步工具",
+        "› 任何工具返回都不中断"
       ]
     },
     {
