@@ -108,6 +108,54 @@ def _label_array_detail(labels: Any, field: str) -> str | None:
     return None
 
 
+def _depends_on_detail(depends_on: Any) -> str | None:
+    """Return a malformed-``depends_on`` detail string, else ``None``.
+
+    Mirrors :func:`_label_array_detail` so a bad ``depends_on`` field is
+    rejected during iteration — with file:line via :func:`_iter_rows` —
+    instead of raising an uncaught ``TypeError`` later in
+    :func:`call_from_json` (v0.6 fix: ``fix-trace-depends-on-scalar-crash``).
+    :func:`call_from_json` did ``list(row.get("depends_on", []) or [])``: a
+    non-list scalar like the int ``5`` makes ``list(5)`` raise ``TypeError:
+    'int' object is not iterable`` (not ``ValueError``), bypassing the CLI's
+    "Trace malformed" handler and exiting 1 with empty output, and a non-empty
+    *string* ``depends_on`` is silently split to its characters by ``list()``
+    so the edge is quietly dropped. Returns ``None`` for an absent/``null``
+    field (no dependencies is not malformed).
+    """
+    if depends_on is None:
+        return None
+    if not isinstance(depends_on, list):
+        return "field 'depends_on' must be a list of strings"
+    for item in depends_on:
+        if not isinstance(item, str):
+            return "field 'depends_on' must contain only strings"
+    return None
+
+
+def _depends_on_from_json(raw: Any) -> list[str]:
+    """Parse a serialised ``depends_on`` back into a list of call ids.
+
+    Defensive guard mirroring :func:`_labels_from_json` so a direct caller
+    that builds a row by hand via :func:`call_from_json` (bypassing
+    :func:`_iter_rows`) is still protected from a non-list scalar raising an
+    uncaught ``TypeError`` (v0.6 fix: ``fix-trace-depends-on-scalar-crash``).
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(
+            "malformed depends_on: expected a list of strings, "
+            f"got {type(raw).__name__}"
+        )
+    for item in raw:
+        if not isinstance(item, str):
+            raise ValueError(
+                "malformed depends_on: expected a list of strings"
+            )
+    return list(raw)
+
+
 def call_to_json(call: ToolCall) -> dict[str, Any]:
     """Serialise one :class:`ToolCall` to a JSON-ready dict (one JSONL row)."""
     return {
@@ -121,6 +169,7 @@ def call_to_json(call: ToolCall) -> dict[str, Any]:
         "depends_on": list(call.depends_on),
         "side_effect": call.side_effect,
         "ts": call.ts,
+        "error": call.error,
     }
 
 
@@ -134,9 +183,10 @@ def call_from_json(row: dict[str, Any]) -> ToolCall:
         in_labels=_labels_from_json(row.get("in_labels")),
         source_labels=_labels_from_json(row.get("source_labels")),
         out_labels=_labels_from_json(row.get("out_labels")),
-        depends_on=list(row.get("depends_on", []) or []),
+        depends_on=_depends_on_from_json(row.get("depends_on")),
         side_effect=bool(row.get("side_effect", False)),
         ts=row.get("ts"),
+        error=row.get("error"),
     )
 
 
@@ -309,6 +359,25 @@ def _iter_rows(path: str | Path, *, strict: bool = False) -> Iterable[dict[str, 
                     raise ValueError(
                         f"{p}:{lineno}: malformed trace row ({_detail})"
                     )
+            # A row that passes the label checks can still carry a non-list
+            # ``depends_on`` (e.g. the int ``5`` or a bare string). That would
+            # raise an uncaught ``TypeError`` (not ``ValueError``) deep in
+            # call_from_json via ``list(depends_on)`` — bypassing the CLI's
+            # "Trace malformed" handler and exiting 1 with empty output; a
+            # string ``depends_on`` is silently split to chars by ``list()``
+            # so the edge is dropped. Validate it here too so the same clean
+            # file:line "Trace malformed" + exit 2 path fires (v0.6 fix:
+            # fix-trace-depends-on-scalar-crash).
+            _detail = _depends_on_detail(row.get("depends_on"))
+            if _detail is not None:
+                if strict:
+                    raise ValueError(
+                        f"{p}:{lineno}: malformed trace row ({_detail})\n"
+                        f"  raw: {line!r}"
+                    )
+                raise ValueError(
+                    f"{p}:{lineno}: malformed trace row ({_detail})"
+                )
             yield row
 
 

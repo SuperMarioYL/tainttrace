@@ -73,6 +73,15 @@ class ToolCall(BaseModel):
         description="True if the call mutates external state (write/commit/send).",
     )
     ts: float | None = Field(default=None, description="Optional record timestamp.")
+    error: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "If the tool raised, its exception type and message "
+            "({'type': ..., 'message': ...}); result is None (v0.6: "
+            "m6_record_failed_tool_calls — a raising side-effecting tool "
+            "is still recorded for audit-trail completeness before re-raising)."
+        ),
+    )
 
     # Pydantic v2 coerces incoming sets/lists into frozensets via the field type,
     # but JSONL-decoded payloads arrive as plain lists of dicts; normalise here so

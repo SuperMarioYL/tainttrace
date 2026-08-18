@@ -340,6 +340,47 @@ def _labels_in_value(value: Any, _seen: set[int] | None = None) -> TaintSet:
     return out
 
 
+def _mark_value(value: Any, labels: TaintSet, _seen: set[int] | None = None) -> None:
+    """Mark ``value`` and, when it is a container, each member recursively.
+
+    The output-side mirror of :func:`_labels_in_value`. ``@tracked`` marks the
+    top-level result via ``_REGISTRY.mark(result, out_labels)``, but when the
+    result is a container its members are never registered — so a downstream
+    ``@tracked`` tool that receives an *extracted member* (the common "tool
+    returns a list, agent indexes out one element" pattern) gets
+    ``in_labels=empty`` and a poisoned side-effecting write of that member is
+    classified proven-clean and dropped from quarantine — a soundness
+    false-negative symmetric to the v0.4 input-side
+    ``fix-collect-in-labels-container-args`` (v0.6 fix:
+    ``fix-result-container-member-taint-lost``). Walking the container and
+    marking each member (recursively, with a ``_seen`` set-of-``id()``s cycle
+    guard mirroring :func:`_labels_in_value`) keeps
+    :meth:`_TaintRegistry.labels_for` able to find an extracted member
+    downstream. ``str``/``bytes`` value-keying is intended here (the documented
+    "poisoned string surviving a round-trip" case); ``int``/``float``/``bool``
+    stay excluded per the v0.3 scalar-collision fix (:func:`_is_value_keyable`).
+    """
+    if not labels:
+        return
+    _REGISTRY.mark(value, labels)
+    if not isinstance(value, (list, tuple, dict, set, frozenset)):
+        return
+    if _seen is None:
+        _seen = set()
+    oid = id(value)
+    if oid in _seen:
+        return
+    _seen.add(oid)
+    # Mirror _labels_in_value: for a dict, walk both keys and values so a
+    # tainted key (a rare but real dataflow case) is registered too.
+    if isinstance(value, dict):
+        members = (*value.keys(), *value.values())
+    else:
+        members = value
+    for member in members:
+        _mark_value(member, labels, _seen)
+
+
 # --------------------------------------------------------------------------- #
 # Public decorator: @tracked.
 # --------------------------------------------------------------------------- #
@@ -395,25 +436,44 @@ def tracked(
             @functools.wraps(func)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 in_labels = _collect_in_labels(args, kwargs)
-                result = await func(*args, **kwargs)
+                try:
+                    result = await func(*args, **kwargs)
+                except Exception as exc:
+                    # A side-effecting tool that raised mid-execution (and may
+                    # have partially mutated external state) is still recorded
+                    # for audit-trail completeness, then re-raised so the agent
+                    # loop sees the original failure (v0.6:
+                    # m6_record_failed_tool_calls). out_labels carries in_labels
+                    # so a failed side-effecting call whose inputs were tainted
+                    # still lands in the blast-radius quarantine set.
+                    out_labels = propagate(in_labels)
+                    _record_tracked_call(
+                        get_recorder(),
+                        tool_name,
+                        args,
+                        kwargs,
+                        in_labels,
+                        out_labels,
+                        effect,
+                        result=None,
+                        error={"type": type(exc).__name__, "message": str(exc)},
+                    )
+                    raise
 
                 out_labels = propagate(in_labels)
                 if out_labels:
-                    _REGISTRY.mark(result, out_labels)
+                    _mark_value(result, out_labels)
 
-                recorder = get_recorder()
-                call_id = _make_call_id(recorder, tool_name)
-                call = ToolCall(
-                    id=call_id,
-                    name=tool_name,
-                    args=_safe_args(args, kwargs),
+                _record_tracked_call(
+                    get_recorder(),
+                    tool_name,
+                    args,
+                    kwargs,
+                    in_labels,
+                    out_labels,
+                    effect,
                     result=_safe_result(result),
-                    in_labels=in_labels,
-                    out_labels=out_labels,
-                    side_effect=effect,
-                    ts=time.time(),
                 )
-                recorder.record(call)
                 return result
 
             return async_wrapper  # type: ignore[return-value]
@@ -421,28 +481,47 @@ def tracked(
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             in_labels = _collect_in_labels(args, kwargs)
-            result = func(*args, **kwargs)
+            try:
+                result = func(*args, **kwargs)
+            except Exception as exc:
+                # A side-effecting tool that raised mid-execution (and may have
+                # partially mutated external state) is still recorded for
+                # audit-trail completeness, then re-raised so the agent loop
+                # sees the original failure (v0.6: m6_record_failed_tool_calls).
+                out_labels = propagate(in_labels)
+                _record_tracked_call(
+                    get_recorder(),
+                    tool_name,
+                    args,
+                    kwargs,
+                    in_labels,
+                    out_labels,
+                    effect,
+                    result=None,
+                    error={"type": type(exc).__name__, "message": str(exc)},
+                )
+                raise
 
             # The result inherits the taint of its inputs (propagation rule). We
             # register that on the returned value so downstream @tracked tools
-            # that consume it see the taint, even across hops.
+            # that consume it see the taint, even across hops. When the result is
+            # a container, its members are marked too so an extracted member
+            # passed downstream is still found (v0.6:
+            # fix-result-container-member-taint-lost).
             out_labels = propagate(in_labels)
             if out_labels:
-                _REGISTRY.mark(result, out_labels)
+                _mark_value(result, out_labels)
 
-            recorder = get_recorder()
-            call_id = _make_call_id(recorder, tool_name)
-            call = ToolCall(
-                id=call_id,
-                name=tool_name,
-                args=_safe_args(args, kwargs),
+            _record_tracked_call(
+                get_recorder(),
+                tool_name,
+                args,
+                kwargs,
+                in_labels,
+                out_labels,
+                effect,
                 result=_safe_result(result),
-                in_labels=in_labels,
-                out_labels=out_labels,
-                side_effect=effect,
-                ts=time.time(),
             )
-            recorder.record(call)
             return result
 
         return wrapper  # type: ignore[return-value]
@@ -501,6 +580,42 @@ def _make_call_id(recorder: Recorder, name: str) -> str:
     if callable(minter):
         return str(minter(name))
     return f"{name}-{int(time.time() * 1_000_000)}"
+
+
+def _record_tracked_call(
+    recorder: Recorder,
+    tool_name: str,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    in_labels: TaintSet,
+    out_labels: TaintSet,
+    effect: bool,
+    *,
+    result: Any,
+    error: dict[str, str] | None = None,
+) -> None:
+    """Build and record the :class:`ToolCall` for one ``@tracked`` invocation.
+
+    Shared by the sync and async wrappers (and by both the success and
+    raising paths) so the recorded row is identical in shape whether the tool
+    returned or raised (v0.6: ``m6_record_failed_tool_calls`` — a tool that
+    raises is recorded with ``result=None`` plus an ``error`` field before the
+    exception is re-raised, so a side-effecting tool that failed mid-execution
+    no longer vanishes from the trace / blast-radius report).
+    """
+    call_id = _make_call_id(recorder, tool_name)
+    call = ToolCall(
+        id=call_id,
+        name=tool_name,
+        args=_safe_args(args, kwargs),
+        result=result,
+        in_labels=in_labels,
+        out_labels=out_labels,
+        side_effect=effect,
+        ts=time.time(),
+        error=error,
+    )
+    recorder.record(call)
 
 
 def _safe_args(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
