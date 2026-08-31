@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-01
+
+Fix-only bump over v0.6.0. Two HIGH-confidence MEDIUM bug-hunt soundness
+fixes over the shipped source; no new product features, no new deps. File-only
+demand persists (0 gh issues, the repo has never had an issue); anchored on
+bug-hunt fixes matching the v0.2–v0.6 precedent.
+
+### Fixed
+- **`taint_source` on a container now marks each member so an extracted member
+  still carries the untrusted label** (`fix-taint-source-container-member-taint-lost`,
+  MEDIUM). `taint_source` marked only the top-level object via
+  `_REGISTRY.mark(value, labels)`; a container is never value-keyable, so only
+  the container's own `id()` carried the label. A downstream `@tracked` tool
+  that received an *extracted member* (the common "agent fetches a list,
+  indexes out one element, writes it" pattern) got `in_labels=empty` and a
+  poisoned side-effecting write was dropped from quarantine — a soundness
+  false-negative in the core blast-radius promise, and the input-side mirror of
+  the v0.6 `fix-result-container-member-taint-lost`, which added `_mark_value`
+  (recursive member marking) for the `@tracked` *result* side but left the
+  `taint_source` boundary primitive non-recursive. `taint_source` now calls
+  `_mark_value` (the same function v0.6 shipped for the result side, with the
+  `_seen` `id()` cycle guard); for a non-container value it is identical to
+  `_REGISTRY.mark`, so the scalar str/bytes path is unchanged. `src/tainttrace/
+  wrap.py` (`taint_source`, using the existing `_mark_value`).
+- **tuple value-keying restricted to str/bytes members so a scalar-bearing tuple
+  no longer over-taints every value-equal tuple**
+  (`fix-registry-tuple-scalar-collision`, MEDIUM). `_is_value_keyable` returned
+  `True` for ANY hashable tuple, so `taint_source((404, 501))` value-keyed the
+  tuple and a later independently-constructed, value-equal tuple was falsely
+  tainted (over-quarantine) — the same coincidental-value-equality collision the
+  v0.3 `fix-registry-scalar-value-collision` removed for bare scalars, just
+  wrapped in a tuple, despite the v0.3 docstring promising "tuples of
+  [str/bytes]". A tuple is now value-keyed only when every member is str/bytes;
+  a str/bytes tuple (`("admin", "secret")`) still round-trips, and identity
+  tracking (`id()`) still covers any tuple object passed through.
+  `src/tainttrace/wrap.py` (`_is_value_keyable`).
+
 ## [0.5.0] - 2026-08-14
 
 Fix-only bump over v0.4.0. One high-confidence bug-hunt fix over the shipped

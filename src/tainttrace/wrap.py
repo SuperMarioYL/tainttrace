@@ -108,8 +108,8 @@ class _TaintRegistry:
 def _is_value_keyable(value: Any) -> bool:
     """True if ``value`` can safely be a dict key for value-based taint lookup.
 
-    Restricted to strings/bytes (and hashable tuples): these are the values
-    that actually survive being passed through a tool and compared equal
+    Restricted to strings/bytes and tuples *of* strings/bytes: these are the
+    values that actually survive being passed through a tool and compared equal
     downstream — the documented "poisoned string surviving a round-trip" case.
     Scalars (int/float/bool) are deliberately excluded: coincidental value
     equality (``taint_source(404)`` tainting every later ``404``, or
@@ -117,15 +117,24 @@ def _is_value_keyable(value: Any) -> bool:
     Identity tracking (``id()``) still covers the same scalar object passed
     through; only the unsound value-equality fallback is removed
     (v0.3 fix: ``fix-registry-scalar-value-collision``).
+
+    A tuple is value-keyed only when every member is str/bytes — the "tuples
+    of such" the v0.3 docstring promised but the implementation did not
+    enforce. Without this check a tuple containing a scalar member
+    (``("admin", 404)``, ``(True,)``, ``(1, 2, 3)``) is hashable, so it was
+    value-keyed and ``taint_source(("admin", 404))`` tainted every later
+    value-equal ``("admin", 404)`` tuple — the same coincidental-value-equality
+    collision v0.3 removed for bare scalars, just wrapped in a tuple
+    (v0.7 fix: ``fix-registry-tuple-scalar-collision``). A str/bytes tuple
+    (``("admin", "secret")``) stays value-keyed; any other tuple (incl.
+    nested tuples) is covered by identity tracking.
     """
     if isinstance(value, (str, bytes)):
         return True
     if isinstance(value, tuple):
-        try:
-            hash(value)
-            return True
-        except TypeError:
-            return False
+        # All-str/bytes members => necessarily hashable; a scalar member would
+        # otherwise collide by coincidental value equality.
+        return all(isinstance(member, (str, bytes)) for member in value)
     return False
 
 
@@ -266,7 +275,12 @@ def taint_source(
 
     The value now carries an untrusted label; any ``@tracked`` tool that receives
     it (directly or via an equal copy) records that label as an input, and the
-    propagation rule carries it to every downstream action. ``origin="trusted"``
+    propagation rule carries it to every downstream action. When ``value`` is a
+    container (list/tuple/dict/set/frozenset) each member is marked too (via
+    :func:`_mark_value`, with a ``_seen`` id() cycle guard) so an *extracted
+    member* passed downstream still carries the label — the input-side mirror of
+    the v0.6 result-side marking (v0.7 fix:
+    ``fix-taint-source-container-member-taint-lost``). ``origin="trusted"``
     marks provenance without widening the blast radius (useful for tagging known
     config so the report can show "trusted-origin" alongside the danger).
 
@@ -275,7 +289,13 @@ def taint_source(
     True
     """
     labels = taint(source_id, origin=origin, reason=reason)
-    _REGISTRY.mark(value, labels)
+    # Mark the value and, when it is a container, each member recursively so an
+    # extracted member still carries the label (v0.7:
+    # fix-taint-source-container-member-taint-lost). _mark_value is the same
+    # function the @tracked result path uses (v0.6), so the boundary and the
+    # output side stay symmetric; for a non-container it is identical to
+    # _REGISTRY.mark.
+    _mark_value(value, labels)
     return value
 
 
