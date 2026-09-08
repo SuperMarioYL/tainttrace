@@ -1,165 +1,211 @@
-<div align="right"><sub><a href="./README.en.md">English</a>&nbsp;&nbsp;⇄&nbsp;&nbsp;<b>简体中文</b></sub></div>
+[English](README.en.md) | **简体中文**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/hero-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/hero-light.svg">
-  <img src="./assets/hero-light.svg" width="880" alt="TaintTrace — 给自主 Agent 装上动态污点追踪，秒级算出 Prompt Injection 的爆炸半径">
+  <source media="(max-width: 640px) and (prefers-color-scheme: dark)" srcset="assets/presentation/hero-mobile-dark.svg">
+  <source media="(max-width: 640px)" srcset="assets/presentation/hero-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/presentation/hero-dark.svg">
+  <img src="assets/presentation/hero-light.svg" width="1000" alt="给不可信输入显式打标，沿已插桩的工具调用传播标签，列出受影响且有副作用的动作。">
 </picture>
 
-<p><sub>TaintTrace 是一个污点追踪工具：当一次 Prompt Injection 落地，它沿 Agent 工具调用图算出这次注入的爆炸半径。</sub></p>
+**给不可信输入显式打标，沿已插桩的工具调用传播标签，列出受影响且有副作用的动作。**
 
-<p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-black.svg" alt="License"></a>
-  <a href="https://github.com/SuperMarioYL/tainttrace/releases"><img src="https://img.shields.io/github/v/release/SuperMarioYL/tainttrace" alt="Release"></a>
-  <a href="https://github.com/SuperMarioYL/tainttrace/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/SuperMarioYL/tainttrace/ci.yml?branch=main&label=ci" alt="CI"></a>
-  <img src="https://img.shields.io/badge/python-3.12-blue.svg" alt="Python">
-  <img src="https://img.shields.io/badge/Prompt%20Injection-blast%20radius-E5484D.svg" alt="Prompt Injection">
-  <img src="https://img.shields.io/badge/Agent-taint%20propagation-5E5CE6.svg" alt="Agent">
-</p>
+`v0.7.0` · `Python 3.12+` · [Apache-2.0](LICENSE)
 
-**护栏只在边界拦截；一旦注入溜进来，你需要一个传播模型才能找出它污染了哪些动作 —— 这就是 TaintTrace。**
+[Website](https://tainttrace.lei6393.com) · [Demo record](docs/demo-results.json)
 
-当一次 Prompt Injection 或 role-confusion 漏洞落在自主 Agent 内部时，真正棘手的失败动词是「传播」：一个被投毒的 token 不会只产出一个坏输出，它会沿着一连串下游工具调用、文件写入和记忆更新悄悄施加影响。今天安全工程师明知发生了注入，却没有任何机械化的办法回答「最近 200 个 Agent 动作里，哪些被它污染了？」—— 只能逐行翻日志、靠猜。TaintTrace 把安全数据流分析里的**动态污点追踪**搬进 Agent 运行时：每一个不可信 token（Web 内容、工具输出）携带一个污点标签，沿工具调用图传播，于是事后可以确定并隔离它影响过的每一个动作。这正是 [role-confusion.github.io](https://role-confusion.github.io)（HN 164 分）那场讨论指向的心智模型 —— 把注入当作信任传播问题，而非字符串过滤问题 —— TaintTrace 把这个标签变成可计算的。
+## 为什么使用
 
-## 目录
+只记录动作名，很难知道某个输出是否用到了不可信内容。TaintTrace 要求接入方在边界打标，并通过 tracked 工具保留传播关系。报告按记录中的依赖和副作用标记给出复查清单，不自行判断内容是否恶意，也不自动隔离运行中的动作。
 
-- [架构](#架构)
-- [安装](#安装)
-- [快速开始](#快速开始)
-- [用法](#用法)
-- [Demo](#demo)
-- [为什么需要它](#为什么需要它)
-- [vs Ponytrail](#vs-ponytrail)
-- [路线图](#路线图)
-- [许可协议](#许可协议)
-
-<h2 id="架构"><img src="https://api.iconify.design/tabler:topology-star-3.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 架构</h2>
-
-单个 Python 库 + 一个 CLI，无服务、无数据库。运行期用 `taint_source()` 在边界打标、`@tracked` 记录每次工具调用；事后 CLI 从 `run.jsonl` 重建工具调用图、跑传播、算出隔离清单。
+## 架构
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/atlas-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/atlas-light.svg">
-  <img src="./assets/atlas-light.svg" width="880" alt="架构：不可信 Web 内容 → @tracked 工具 → 污点标签 → 工具调用图 → 爆炸半径/隔离清单">
+  <source media="(max-width: 640px) and (prefers-color-scheme: dark)" srcset="assets/presentation/architecture-mobile-dark.svg">
+  <source media="(max-width: 640px)" srcset="assets/presentation/architecture-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/presentation/architecture-dark.svg">
+  <img src="assets/presentation/architecture-light.svg" width="1000" alt="label.py 定义标签集合，wrap.py 在同步或异步工具输入输出之间传播标签，Tracker 可记录 JSONL。graph.py 重建依赖图，quarantine.py 计算可达动作并筛选 side_effect。CLI 提供表格、图和 JSON。">
 </picture>
 
-| 模块 | 职责 |
-|---|---|
-| `label.py` | 污点标签 / 标签集 + 并集传播原语 |
-| `wrap.py` | `@tracked` 装饰器 + `taint_source()` 边界助手 |
-| `graph.py` | 重建工具调用图 + 拓扑传播 |
-| `quarantine.py` | 传递闭包 + 副作用分类 → 爆炸半径 |
-| `tracker.py` | 顶层门面：录制 JSONL 轨迹、算爆炸半径 |
-| `cli.py` | `report` / `demo` 命令（typer + rich） |
+label.py 定义标签集合，wrap.py 在同步或异步工具输入输出之间传播标签，Tracker 可记录 JSONL。graph.py 重建依赖图，quarantine.py 计算可达动作并筛选 side_effect。CLI 提供表格、图和 JSON。
 
-<h2 id="安装"><img src="https://api.iconify.design/tabler:rocket.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 安装</h2>
+示例中的 web_fetch、write_file、git_commit、send_message 都是返回字符串的模拟函数，不执行同名外部操作。核心接口见 [wrap.py](src/tainttrace/wrap.py) 与 [tracker.py](src/tainttrace/tracker.py)。
+
+## 安装
+
+需要 Python 3.12+。下面的全部工具函数都是本地 fixture，无网络、真实文件写入或消息发送。
 
 ```bash
 git clone https://github.com/SuperMarioYL/tainttrace.git
 cd tainttrace
-pip install -e ".[dev]"        # 或 uv pip install -e ".[dev]"
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
 ```
 
-<h2 id="快速开始"><img src="https://api.iconify.design/tabler:player-play.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 快速开始</h2>
+## 快速开始
 
-冷启动到看见红色隔离清单，三条命令：
+真实执行内置 11 动作场景与一个 3 动作脚本，验证标签传播和报告。动作名称中的网络、提交或发送行为均为模拟，clean 只表示在该记录图中没有追溯到标签。
 
 ```bash
-python examples/poisoned_web_demo.py        # 跑一遍被投毒的 Web 抓取
-tainttrace report --trace run.jsonl --graph # 渲染工具调用图 + 隔离清单
-tainttrace report --trace run.jsonl --json  # 机器可读的爆炸半径（给 CI / 事件工具）
+python -m tainttrace.cli demo
+python examples/presentation_demo.py
 ```
 
-<details><summary>示例输出</summary>
+内置 demo 无需输入文件；最小完整脚本在 [examples/presentation_demo.py](examples/presentation_demo.py)。
 
-```
+## 使用
+
+使用 Tracker 上下文或 activate/deactivate 管理录制，为工具加 tracked，在不可信输入进入时调用 taint_source。report --trace FILE 重建报告；--graph 展示图，--source ID 按来源过滤。提供 trace 时必须保留真实的数据依赖和标签，不能从动作名自动推断完整影响。
+
+## 实际 Demo
+
+<picture>
+  <source media="(max-width: 640px) and (prefers-color-scheme: dark)" srcset="assets/presentation/process-mobile-dark.svg">
+  <source media="(max-width: 640px)" srcset="assets/presentation/process-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/presentation/process-dark.svg">
+  <img src="assets/presentation/process-light.svg" width="1000" alt="真实执行内置 11 动作场景与一个 3 动作脚本，验证标签传播和报告。动作名称中的网络、提交或发送行为均为模拟，clean 只表示在该记录图中没有追溯到标签。">
+</picture>
+
+### 内置传播场景
+
+在模拟函数中运行 11 条动作的标签链。
+
+```text
+$ python -m tainttrace.cli demo
+╭─ tainttrace demo ────────────────────────────────────────────────────────────────────────────────╮
+│ Poisoned-web demo: a fetched page carried a prompt injection. Tracing how its taint propagated   │
+│ through the agent's tool graph…                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+                                          Tool-call graph
+┏━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ call id                ┃ tool              ┃   side-effect    ┃ depends on        ┃    taint     ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ web_fetch-1            │ web_fetch         │        —         │ —                 │    clean     │
+│ web_fetch-2            │ web_fetch         │        —         │ —                 │    clean     │
+│ web_fetch-3            │ web_fetch         │        —         │ —                 │    clean     │
+│ summarize-4            │ summarize         │        —         │ web_fetch-2       │  ● tainted   │
+│ summarize-5            │ summarize         │        —         │ web_fetch-1       │    clean     │
+│ plan-6                 │ plan              │        —         │ summarize-4       │  ● tainted   │
+│ write_file-7           │ write_file        │        ✓         │ plan-6            │  ● tainted   │
+│ write_file-8           │ write_file        │        ✓         │ summarize-5       │    clean     │
+│ git_commit-9           │ git_commit        │        ✓         │ write_file-7      │  ● tainted   │
+│ read_file-10           │ read_file         │        —         │ web_fetch-3       │    clean     │
+│ send_message-11        │ send_message      │        ✓         │ read_file-10      │    clean     │
+└────────────────────────┴───────────────────┴──────────────────┴───────────────────┴──────────────┘
+
 ╭────────────────────────────────────────────────────────────────╮
 │ 4 of 11 actions tainted  ·  2 to quarantine  ·  7 proven clean │
 ╰────────────────────────────────────────────────────────────────╯
 Untrusted sources: web:cve-blog
 
-      Quarantine list — side-effecting actions to roll back
- #  call id        tool         hops  tainted by     why
- 1  write_file-7   write_file       0  web:cve-blog   poisoned web page (prompt injection)
- 2  git_commit-9   git_commit       0  web:cve-blog   poisoned web page (prompt injection)
+                       Quarantine list — side-effecting actions to roll back
+┏━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃    # ┃ call id       ┃ tool        ┃  hops ┃ tainted by   ┃ why                                  ┃
+┡━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│    1 │ write_file-7  │ write_file  │     2 │ web:cve-blog │ poisoned web page (prompt injection) │
+│    2 │ git_commit-9  │ git_commit  │     3 │ web:cve-blog │ poisoned web page (prompt injection) │
+└──────┴───────────────┴─────────────┴───────┴──────────────┴──────────────────────────────────────┘
+
+                    Influenced (tainted, no side effect) — review, not roll back
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ call id                     ┃ tool                   ┃        hops ┃ tainted by                  ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ summarize-4                 │ summarize              │           0 │ web:cve-blog                │
+│ plan-6                      │ plan                   │           1 │ web:cve-blog                │
+└─────────────────────────────┴────────────────────────┴─────────────┴─────────────────────────────┘
+
+Proven clean (7): web_fetch-1, web_fetch-2, web_fetch-3, summarize-5, write_file-8, read_file-10,
+send_message-11
 ```
 
-</details>
+### 最小完整脚本
 
-<h2 id="用法"><img src="https://api.iconify.design/tabler:terminal-2.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 用法</h2>
+3 动作中 2 条受标签影响，1 条有副作用标记。
 
-把 TaintTrace 接进你现有的 Agent 只要两步：给每个工具加 `@tracked`，在不可信内容进入处包一层 `taint_source()`。
-
-```python
-from tainttrace import Tracker, tracked, taint_source
-
-tracker = Tracker(path="run.jsonl").activate()
-
-@tracked                       # 只读工具，自动判定无副作用
-def web_fetch(url): ...
-
-@tracked(side_effect=True)     # 写文件 = 副作用，进入隔离判定
-def write_file(path, body): ...
-
-# 在边界给不可信内容打标
-page = taint_source(web_fetch(url), source_id="web:blog", reason="抓取的网页")
-write_file("notes.md", summarize(page))   # 污点沿数据依赖传播到这次写入
-
-report = tracker.blast_radius()
-print(report.headline())       # "4 of 11 actions tainted, 7 proven clean"
+```text
+$ python examples/presentation_demo.py
+{
+  "total_actions": 3,
+  "tainted_count": 2,
+  "quarantine_count": 1,
+  "clean_count": 1,
+  "sources": [
+    "fixture:input"
+  ],
+  "headline": "2 of 3 actions tainted, 1 proven clean",
+  "quarantine": [
+    {
+      "id": "simulated_write-2",
+      "name": "simulated_write",
+      "side_effect": true,
+      "reached_by": [
+        "fixture:input"
+      ],
+      "reasons": [
+        "explicitly labeled example"
+      ],
+      "hops": 1
+    }
+  ],
+  "tainted": [
+    {
+      "id": "transform-1",
+      "name": "transform",
+      "side_effect": false,
+      "reached_by": [
+        "fixture:input"
+      ],
+      "reasons": [
+        "explicitly labeled example"
+      ],
+      "hops": 0
+    },
+    {
+      "id": "simulated_write-2",
+      "name": "simulated_write",
+      "side_effect": true,
+      "reached_by": [
+        "fixture:input"
+      ],
+      "reasons": [
+        "explicitly labeled example"
+      ],
+      "hops": 1
+    }
+  ],
+  "clean_ids": [
+    "transform-3"
+  ]
+}
 ```
 
-常用命令与 API：
+## 能力与接入
 
-- `tainttrace report --trace run.jsonl` —— 渲染红色隔离清单。
-- `tainttrace report --trace run.jsonl --json` —— 输出爆炸半径 JSON（隔离非空时进程退出码为 1，便于 CI 卡门）。
-- `tainttrace demo` —— 无需任何文件，直接跑内置的被投毒 Web 场景。
-- `Tracker.quarantine_from_source(source_id)` —— 把爆炸半径限定到某一个命名注入源。
+<picture>
+  <source media="(max-width: 640px) and (prefers-color-scheme: dark)" srcset="assets/presentation/integrations-mobile-dark.svg">
+  <source media="(max-width: 640px)" srcset="assets/presentation/integrations-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/presentation/integrations-dark.svg">
+  <img src="assets/presentation/integrations-light.svg" width="1000" alt="标签传播依赖被包装的数据与调用关系。未插桩路径、未标记输入或丢失标签的转换都可能让图不完整；报告里的 proven clean 不是整个系统的安全证明。">
+</picture>
 
-完整示例见 [`examples/poisoned_web_demo.py`](./examples/poisoned_web_demo.py)。
+标签传播依赖被包装的数据与调用关系。未插桩路径、未标记输入或丢失标签的转换都可能让图不完整；报告里的 proven clean 不是整个系统的安全证明。
 
-<h2 id="demo"><img src="https://api.iconify.design/tabler:photo.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Demo</h2>
 
-注入一次被投毒的 Web 结果 → 看污点标签沿工具调用图传播 → 红色隔离清单亮起（11 个动作中 4 个被污染，7 个被证明干净）。
 
-![demo](assets/demo.gif)
+## 配置
 
-<h2 id="为什么需要它"><img src="https://api.iconify.design/tabler:bulb.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 为什么需要它</h2>
+side_effect=True 显式标记需关注的副作用。v0.7.0 的 report --json 成功输出时退出 0；文本模式在 quarantine 非空时退出 1，文件/格式错误退出 2。--strict 让损坏行报告原始内容，日志含敏感数据时应注意输出去向。
 
-护栏 / 输入过滤器只做一件事：在边界拦截可疑输入。它们是无状态、边界局部的 —— 没有传播模型，一旦有东西溜过去，它们对「事后这东西又影响了什么」无能为力。审计日志（如 Ponytrail）记录了「发生了什么」，但把可信来源和注入来源记成无差别的同一条流，事后无法区分。TaintTrace 补的正是这道缝：在每个数据的**源头**打上信任标签并沿工具调用图带着走，于是注入落地后，爆炸半径从手工考古变成一次确定性查询 —— 返回需要回滚的精确动作集合。
+## 路线图与范围
 
-<h2 id="vs-ponytrail">vs Ponytrail</h2>
+当前支持显式插桩、同步/异步包装、JSONL 与按来源报告。自动框架插桩、跨会话分析和事件 dashboard 仍是后续方向；没有自动回滚器。
 
-[Ponytrail](https://github.com/0xroylee/ponytrail) 是最贴近的相邻项目：一个本地的 Agent 编辑审计轨迹。两者互补 —— 诚实地说，Ponytrail 在「人类可读的时间线」上做得更顺手。
+- 必须显式标记和插桩，不能自动追踪任意 Agent 的所有 token。
+- clean 仅相对于记录图，不表示没有其他未观测影响。
+- 不会自动回滚、阻断工具或证明注入已成功利用。
 
-| 能力 | TaintTrace | Ponytrail |
-|---|:---:|:---:|
-| 记录 Agent 动作序列 | ✓ | ✓ |
-| 区分可信来源 vs 注入来源 | ✓ | — |
-| 沿工具调用图做污点传播 | ✓ | — |
-| 计算注入的传递爆炸半径 | ✓ | — |
-| 现成的人类可读编辑时间线 UI | 部分 | ✓ |
+[Terminal recording](assets/demo.gif) · [Recording script](docs/demo.tape)
 
-<h2 id="路线图"><img src="https://api.iconify.design/tabler:map-2.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 路线图</h2>
+## 许可证
 
-- [x] **m1** — 污点标签附着到不可信输入，并沿记录的工具调用图传播
-- [x] **m2** — 给定一次事件，计算被污染动作的传递闭包并产出隔离报告
-- [x] **m3** — 即插即用 wrapper + 60 秒内的被投毒 Web 示例，产出红色隔离清单
-- [x] **v0.2.0** — `@tracked` 支持 `async def` 工具（httpx/aiohttp 等异步 Agent 现在可用）
-- [x] **v0.2.0** — `tainttrace report --source <id>` 按单一注入源圈定爆炸半径（与 `--json` 组合）
-- [x] **v0.2.0** — 修复 `Tracker` 上下文管理器 save/restore；`report` 对损坏的 JSONL 行给出干净报错
-- [ ] 对流行 Agent 框架（LangChain / LlamaIndex 工具调用层）的自动插桩
-- [ ] 多 Agent 队列归因 + 跨会话 diff
-- [ ] 事件复盘 dashboard（污点图可视化）
-
-<h2 id="许可协议"><img src="https://api.iconify.design/tabler:license.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 许可协议</h2>
-
-MIT 开源，无付费墙、无托管层。欢迎在 [Issues](https://github.com/SuperMarioYL/tainttrace/issues) 反馈问题（带上真实 trace 最好），或直接提 PR。
-
-## Share this
-
-```
-TaintTrace — compute a Prompt Injection's blast radius across your Agent's tool graph. Drop in @tracked + taint_source(), replay the trace, get a red quarantine list. MIT, OSS. https://github.com/SuperMarioYL/tainttrace
-```
-
-<p align="center"><sub><a href="./LICENSE">MIT</a> © 2026 SuperMarioYL</sub></p>
+[Apache-2.0](LICENSE)

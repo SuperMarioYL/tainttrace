@@ -1,0 +1,38 @@
+{
+  "mode": "auto",
+  "id": "56c7e6-6a89e7-acf6eb-ea01344704dd",
+  "identity": "https://github.com/supermarioyl/tainttrace",
+  "primary": "#56c7e6",
+  "secondary": "#6a89e7",
+  "highlight": "#acf6eb",
+  "dark": {
+    "bg": "#050b12",
+    "panel": "#0c151f",
+    "code": "#0a141d",
+    "ink": "#eefdfb",
+    "muted": "#95b3c4",
+    "line": "#173441",
+    "primary": "#56c7e6",
+    "secondary": "#6a89e7",
+    "highlight": "#acf6eb",
+    "accent": "#56c7e6",
+    "buttonStart": "#377f93",
+    "buttonEnd": "#5973c3",
+    "buttonText": "#ffffff"
+  },
+  "light": {
+    "bg": "#f9fdfe",
+    "panel": "#f7fcfe",
+    "code": "#f3fbfd",
+    "ink": "#132530",
+    "muted": "#557588",
+    "line": "#cbeef7",
+    "primary": "#367c90",
+    "secondary": "#5670bd",
+    "highlight": "#567a75",
+    "accent": "#367c90",
+    "buttonStart": "#377f93",
+    "buttonEnd": "#5973c3",
+    "buttonText": "#ffffff"
+  }
+}

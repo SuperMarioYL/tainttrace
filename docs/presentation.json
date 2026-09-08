@@ -1,0 +1,90 @@
+{
+  "name": "TaintTrace",
+  "tagline": "Follow explicit provenance labels through instrumented tools.",
+  "architecture": {
+    "title": "Explicit source labels to affected-action reports",
+    "nodes": [
+      {
+        "title": "Boundary labels",
+        "detail": "taint_source"
+      },
+      {
+        "title": "Tracked tools",
+        "detail": "Inputs and outputs"
+      },
+      {
+        "title": "Tracker",
+        "detail": "In-memory or JSONL calls"
+      },
+      {
+        "title": "Dependency graph",
+        "detail": "Propagate recorded labels"
+      },
+      {
+        "title": "Quarantine report",
+        "detail": "Affected side-effect flags"
+      }
+    ],
+    "edges": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        4
+      ]
+    ]
+  },
+  "process": {
+    "title": "Trace one labeled fixture value",
+    "steps": [
+      {
+        "title": "Label input",
+        "detail": "fixture:input"
+      },
+      {
+        "title": "Transform and pass",
+        "detail": "Two affected recorded calls"
+      },
+      {
+        "title": "Select side effect",
+        "detail": "One simulated write to review"
+      }
+    ],
+    "result": "The minimal fixture has 3 actions, 2 labeled as affected and 1 marked for quarantine."
+  },
+  "integrations": {
+    "title": "Instrumentation and report surfaces",
+    "items": [
+      {
+        "title": "Python tools",
+        "detail": "Sync and async @tracked"
+      },
+      {
+        "title": "Source labels",
+        "detail": "Explicit trust origin"
+      },
+      {
+        "title": "JSONL trace",
+        "detail": "Optional local recording"
+      },
+      {
+        "title": "Source filtering",
+        "detail": "--source narrows report"
+      },
+      {
+        "title": "Console / JSON",
+        "detail": "Inspection output"
+      }
+    ]
+  }
+}

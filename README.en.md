@@ -1,165 +1,211 @@
-<div align="right"><sub><b>English</b>&nbsp;&nbsp;⇄&nbsp;&nbsp;<a href="./README.md">简体中文</a></sub></div>
+**English** | [简体中文](README.md)
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/hero-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/hero-light.svg">
-  <img src="./assets/hero-light.svg" width="880" alt="TaintTrace — dynamic taint tracking that computes a Prompt Injection's blast radius across an Agent's tool graph">
+  <source media="(max-width: 640px) and (prefers-color-scheme: dark)" srcset="assets/presentation/hero-mobile-dark.svg">
+  <source media="(max-width: 640px)" srcset="assets/presentation/hero-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/presentation/hero-dark.svg">
+  <img src="assets/presentation/hero-light.svg" width="1000" alt="Explicitly label untrusted inputs, propagate provenance through instrumented tool calls, and report affected side-effecting actions.">
 </picture>
 
-<p><sub>TaintTrace is the taint-tracking tool that computes a Prompt Injection's blast radius across an Agent's tool-call graph.</sub></p>
+**Explicitly label untrusted inputs, propagate provenance through instrumented tool calls, and report affected side-effecting actions.**
 
-<p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-black.svg" alt="License"></a>
-  <a href="https://github.com/SuperMarioYL/tainttrace/releases"><img src="https://img.shields.io/github/v/release/SuperMarioYL/tainttrace" alt="Release"></a>
-  <a href="https://github.com/SuperMarioYL/tainttrace/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/SuperMarioYL/tainttrace/ci.yml?branch=main&label=ci" alt="CI"></a>
-  <img src="https://img.shields.io/badge/python-3.12-blue.svg" alt="Python">
-  <img src="https://img.shields.io/badge/Prompt%20Injection-blast%20radius-E5484D.svg" alt="Prompt Injection">
-  <img src="https://img.shields.io/badge/Agent-taint%20propagation-5E5CE6.svg" alt="Agent">
-</p>
+`v0.7.0` · `Python 3.12+` · [Apache-2.0](LICENSE)
 
-**Guardrails block at the boundary; once an injection slips through, you need a propagation model to find every action it tainted — that's TaintTrace.**
+[Website](https://tainttrace.lei6393.com) · [Demo record](docs/demo-results.json)
 
-When a Prompt Injection or role-confusion exploit lands inside an autonomous Agent, the hard failure verb is *propagation*: a single poisoned token doesn't just produce one bad output, it silently influences a chain of downstream tool calls, file writes, and memory updates. Today a security engineer who knows an injection happened has no mechanical way to answer "which of the last 200 agent actions did it taint?" — they read logs by hand and guess. TaintTrace imports **dynamic taint tracking** from security dataflow analysis into the agent runtime: every untrusted token (web content, tool output) carries a taint label that propagates through the tool-call graph, so after the fact you can identify and quarantine every action it influenced. It is the exact mental model the [role-confusion.github.io](https://role-confusion.github.io) writeup (HN 164 pts) pointed at — treating injection as a *trust-propagation* problem, not a string-filtering one — made mechanical.
+## Why use it
 
-## Table of contents
+An action log alone does not identify which outputs used untrusted content. TaintTrace relies on boundary labels and tracked tools to preserve propagation. It reports a review list from recorded dependencies and side-effect flags; it neither decides whether content is malicious nor automatically isolates running actions.
 
-- [Architecture](#architecture)
-- [Install](#install)
-- [Quickstart](#quickstart)
-- [Usage](#usage)
-- [Demo](#demo)
-- [Why this exists](#why-this-exists)
-- [vs Ponytrail](#vs-ponytrail)
-- [Roadmap](#roadmap)
-- [License](#license)
-
-<h2 id="architecture"><img src="https://api.iconify.design/tabler:topology-star-3.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Architecture</h2>
-
-One Python library + one CLI. No services, no database. At runtime you mark untrusted content at the boundary with `taint_source()` and record each tool call with `@tracked`; afterwards the CLI rebuilds the tool-call graph from `run.jsonl`, runs propagation, and prints the quarantine list.
+## Architecture
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/atlas-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/atlas-light.svg">
-  <img src="./assets/atlas-light.svg" width="880" alt="Architecture: untrusted web content → @tracked tools → taint labels → tool-call graph → blast radius / quarantine list">
+  <source media="(max-width: 640px) and (prefers-color-scheme: dark)" srcset="assets/presentation/architecture-mobile-dark.svg">
+  <source media="(max-width: 640px)" srcset="assets/presentation/architecture-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/presentation/architecture-dark.svg">
+  <img src="assets/presentation/architecture-light.svg" width="1000" alt="label.py defines label sets; wrap.py propagates them through synchronous or asynchronous tool inputs and outputs, with optional JSONL recording by Tracker. graph.py rebuilds dependencies, and quarantine.py computes reachable actions and filters side effects. The CLI supplies tables, graphs and JSON.">
 </picture>
 
-| Module | Responsibility |
-|---|---|
-| `label.py` | Taint label / set + the union propagation primitive |
-| `wrap.py` | `@tracked` decorator + `taint_source()` boundary helper |
-| `graph.py` | Rebuild the tool-call graph + topological propagation |
-| `quarantine.py` | Transitive closure + side-effect classification → blast radius |
-| `tracker.py` | Top-level facade: record a JSONL trace, compute the blast radius |
-| `cli.py` | `report` / `demo` commands (typer + rich) |
+label.py defines label sets; wrap.py propagates them through synchronous or asynchronous tool inputs and outputs, with optional JSONL recording by Tracker. graph.py rebuilds dependencies, and quarantine.py computes reachable actions and filters side effects. The CLI supplies tables, graphs and JSON.
 
-<h2 id="install"><img src="https://api.iconify.design/tabler:rocket.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Install</h2>
+The demo functions named web_fetch, write_file, git_commit and send_message return strings and do not perform those external operations. See [wrap.py](src/tainttrace/wrap.py) and [tracker.py](src/tainttrace/tracker.py) for core interfaces.
+
+## Install
+
+Requires Python 3.12+. All demo tool functions are local fixtures, with no network, real file writes or messages.
 
 ```bash
 git clone https://github.com/SuperMarioYL/tainttrace.git
 cd tainttrace
-pip install -e ".[dev]"        # or: uv pip install -e ".[dev]"
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
 ```
 
-<h2 id="quickstart"><img src="https://api.iconify.design/tabler:player-play.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Quickstart</h2>
+## Quickstart
 
-From a cold clone to the red quarantine list in three commands:
+The real built-in eleven-action scenario and a three-action script exercise propagation and reporting. Network, commit and send names are simulated; clean only means no label was reached in the recorded graph.
 
 ```bash
-python examples/poisoned_web_demo.py        # run a poisoned web fetch end to end
-tainttrace report --trace run.jsonl --graph # render the tool graph + quarantine list
-tainttrace report --trace run.jsonl --json  # machine-readable blast radius (CI / tooling)
+python -m tainttrace.cli demo
+python examples/presentation_demo.py
 ```
 
-<details><summary>sample output</summary>
+The built-in demo needs no file; the complete minimal script is [examples/presentation_demo.py](examples/presentation_demo.py).
 
-```
+## Usage
+
+Use a Tracker context or activate/deactivate, decorate tools with tracked, and call taint_source at untrusted boundaries. report --trace FILE reconstructs a report; --graph shows the graph and --source ID filters a source. Preserve actual data dependencies and labels; action names cannot recover complete influence.
+
+## Recorded demo
+
+<picture>
+  <source media="(max-width: 640px) and (prefers-color-scheme: dark)" srcset="assets/presentation/process-mobile-dark.svg">
+  <source media="(max-width: 640px)" srcset="assets/presentation/process-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/presentation/process-dark.svg">
+  <img src="assets/presentation/process-light.svg" width="1000" alt="The real built-in eleven-action scenario and a three-action script exercise propagation and reporting. Network, commit and send names are simulated; clean only means no label was reached in the recorded graph.">
+</picture>
+
+### Built-in propagation scenario
+
+Run the eleven-action label flow through simulated functions.
+
+```text
+$ python -m tainttrace.cli demo
+╭─ tainttrace demo ────────────────────────────────────────────────────────────────────────────────╮
+│ Poisoned-web demo: a fetched page carried a prompt injection. Tracing how its taint propagated   │
+│ through the agent's tool graph…                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+                                          Tool-call graph
+┏━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ call id                ┃ tool              ┃   side-effect    ┃ depends on        ┃    taint     ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ web_fetch-1            │ web_fetch         │        —         │ —                 │    clean     │
+│ web_fetch-2            │ web_fetch         │        —         │ —                 │    clean     │
+│ web_fetch-3            │ web_fetch         │        —         │ —                 │    clean     │
+│ summarize-4            │ summarize         │        —         │ web_fetch-2       │  ● tainted   │
+│ summarize-5            │ summarize         │        —         │ web_fetch-1       │    clean     │
+│ plan-6                 │ plan              │        —         │ summarize-4       │  ● tainted   │
+│ write_file-7           │ write_file        │        ✓         │ plan-6            │  ● tainted   │
+│ write_file-8           │ write_file        │        ✓         │ summarize-5       │    clean     │
+│ git_commit-9           │ git_commit        │        ✓         │ write_file-7      │  ● tainted   │
+│ read_file-10           │ read_file         │        —         │ web_fetch-3       │    clean     │
+│ send_message-11        │ send_message      │        ✓         │ read_file-10      │    clean     │
+└────────────────────────┴───────────────────┴──────────────────┴───────────────────┴──────────────┘
+
 ╭────────────────────────────────────────────────────────────────╮
 │ 4 of 11 actions tainted  ·  2 to quarantine  ·  7 proven clean │
 ╰────────────────────────────────────────────────────────────────╯
 Untrusted sources: web:cve-blog
 
-      Quarantine list — side-effecting actions to roll back
- #  call id        tool         hops  tainted by     why
- 1  write_file-7   write_file       0  web:cve-blog   poisoned web page (prompt injection)
- 2  git_commit-9   git_commit       0  web:cve-blog   poisoned web page (prompt injection)
+                       Quarantine list — side-effecting actions to roll back
+┏━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃    # ┃ call id       ┃ tool        ┃  hops ┃ tainted by   ┃ why                                  ┃
+┡━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│    1 │ write_file-7  │ write_file  │     2 │ web:cve-blog │ poisoned web page (prompt injection) │
+│    2 │ git_commit-9  │ git_commit  │     3 │ web:cve-blog │ poisoned web page (prompt injection) │
+└──────┴───────────────┴─────────────┴───────┴──────────────┴──────────────────────────────────────┘
+
+                    Influenced (tainted, no side effect) — review, not roll back
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ call id                     ┃ tool                   ┃        hops ┃ tainted by                  ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ summarize-4                 │ summarize              │           0 │ web:cve-blog                │
+│ plan-6                      │ plan                   │           1 │ web:cve-blog                │
+└─────────────────────────────┴────────────────────────┴─────────────┴─────────────────────────────┘
+
+Proven clean (7): web_fetch-1, web_fetch-2, web_fetch-3, summarize-5, write_file-8, read_file-10,
+send_message-11
 ```
 
-</details>
+### Minimal complete script
 
-<h2 id="usage"><img src="https://api.iconify.design/tabler:terminal-2.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Usage</h2>
+Two of three actions carry the label; one has a side-effect flag.
 
-Wiring TaintTrace into an existing agent is two steps: add `@tracked` to each tool, and wrap untrusted content in `taint_source()` where it enters.
-
-```python
-from tainttrace import Tracker, tracked, taint_source
-
-tracker = Tracker(path="run.jsonl").activate()
-
-@tracked                       # read-only tool, side-effect inferred as False
-def web_fetch(url): ...
-
-@tracked(side_effect=True)     # a write is a side effect → eligible for quarantine
-def write_file(path, body): ...
-
-# mark untrusted content at the boundary
-page = taint_source(web_fetch(url), source_id="web:blog", reason="fetched page")
-write_file("notes.md", summarize(page))   # taint propagates along data deps to this write
-
-report = tracker.blast_radius()
-print(report.headline())       # "4 of 11 actions tainted, 7 proven clean"
+```text
+$ python examples/presentation_demo.py
+{
+  "total_actions": 3,
+  "tainted_count": 2,
+  "quarantine_count": 1,
+  "clean_count": 1,
+  "sources": [
+    "fixture:input"
+  ],
+  "headline": "2 of 3 actions tainted, 1 proven clean",
+  "quarantine": [
+    {
+      "id": "simulated_write-2",
+      "name": "simulated_write",
+      "side_effect": true,
+      "reached_by": [
+        "fixture:input"
+      ],
+      "reasons": [
+        "explicitly labeled example"
+      ],
+      "hops": 1
+    }
+  ],
+  "tainted": [
+    {
+      "id": "transform-1",
+      "name": "transform",
+      "side_effect": false,
+      "reached_by": [
+        "fixture:input"
+      ],
+      "reasons": [
+        "explicitly labeled example"
+      ],
+      "hops": 0
+    },
+    {
+      "id": "simulated_write-2",
+      "name": "simulated_write",
+      "side_effect": true,
+      "reached_by": [
+        "fixture:input"
+      ],
+      "reasons": [
+        "explicitly labeled example"
+      ],
+      "hops": 1
+    }
+  ],
+  "clean_ids": [
+    "transform-3"
+  ]
+}
 ```
 
-Common commands and APIs:
+## Capabilities and integration
 
-- `tainttrace report --trace run.jsonl` — render the red quarantine list.
-- `tainttrace report --trace run.jsonl --json` — emit the blast-radius JSON (exit code 1 when the quarantine set is non-empty, so it gates CI).
-- `tainttrace demo` — run the bundled poisoned-web scenario, no files needed.
-- `Tracker.quarantine_from_source(source_id)` — scope the blast radius to one named injection source.
+<picture>
+  <source media="(max-width: 640px) and (prefers-color-scheme: dark)" srcset="assets/presentation/integrations-mobile-dark.svg">
+  <source media="(max-width: 640px)" srcset="assets/presentation/integrations-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/presentation/integrations-dark.svg">
+  <img src="assets/presentation/integrations-light.svg" width="1000" alt="Propagation depends on wrapped data and call relationships. Uninstrumented paths, unlabeled inputs or label-losing conversions can leave the graph incomplete. The report’s proven clean wording is not a security proof for the whole system.">
+</picture>
 
-See the full worked example in [`examples/poisoned_web_demo.py`](./examples/poisoned_web_demo.py).
+Propagation depends on wrapped data and call relationships. Uninstrumented paths, unlabeled inputs or label-losing conversions can leave the graph incomplete. The report’s proven clean wording is not a security proof for the whole system.
 
-<h2 id="demo"><img src="https://api.iconify.design/tabler:photo.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Demo</h2>
 
-Inject a poisoned web result → watch the taint label propagate through the tool-call graph → see the red quarantine list light up (4 of 11 actions tainted, 7 proven clean).
 
-![demo](assets/demo.gif)
+## Configuration
 
-<h2 id="why-this-exists"><img src="https://api.iconify.design/tabler:bulb.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Why this exists</h2>
+side_effect=True explicitly marks effects for review. In v0.7.0, successful report --json exits 0; text mode exits 1 for a nonempty quarantine list, and file/format errors exit 2. --strict includes malformed raw lines in errors, so account for sensitive log content when choosing output destinations.
 
-Guardrails and input filters do one thing: block suspicious input at the boundary. They are stateless and boundary-local — no propagation model — so the instant something slips through they offer nothing for the post-breach question. Audit logs (like Ponytrail) record *what happened* but log trusted-origin and injection-origin actions as one undifferentiated stream, so you cannot separate them after the fact. TaintTrace closes exactly that gap: attach a trust label at each datum's *source* and carry it forward through the tool graph, so once an injection lands, blast-radius computation goes from manual archaeology to a deterministic query — return the exact set of actions to roll back.
+## Roadmap and scope
 
-<h2 id="vs-ponytrail">vs Ponytrail</h2>
+Explicit instrumentation, synchronous/asynchronous wrapping, JSONL and source-scoped reports are implemented. Automatic framework instrumentation, cross-session analysis and dashboards remain future work. There is no automatic rollback engine.
 
-[Ponytrail](https://github.com/0xroylee/ponytrail) is the closest adjacent project — a local audit trail for agent edits. The two are complementary, and honestly Ponytrail is the smoother tool for a human-readable timeline.
+- Explicit labels and instrumentation are required; arbitrary agent tokens are not automatically tracked.
+- Clean is relative to the recorded graph and does not rule out unobserved influence.
+- The tool does not roll back, block tools or prove successful exploitation.
 
-| Capability | TaintTrace | Ponytrail |
-|---|:---:|:---:|
-| Records the sequence of agent actions | ✓ | ✓ |
-| Distinguishes trusted vs injection origin | ✓ | — |
-| Taint propagation across the tool graph | ✓ | — |
-| Computes an injection's transitive blast radius | ✓ | — |
-| Ready-made human-readable edit-timeline UI | partial | ✓ |
+[Terminal recording](assets/demo.gif) · [Recording script](docs/demo.tape)
 
-<h2 id="roadmap"><img src="https://api.iconify.design/tabler:map-2.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Roadmap</h2>
+## License
 
-- [x] **m1** — taint labels attach to untrusted inputs and propagate through the recorded tool graph
-- [x] **m2** — given an incident, compute the transitive set of tainted actions and emit a quarantine report
-- [x] **m3** — drop-in wrapper + sub-60s poisoned-web example producing a red quarantine list
-- [x] **v0.2.0** — `@tracked` supports `async def` tools (async agents like httpx/aiohttp now work)
-- [x] **v0.2.0** — `tainttrace report --source <id>` scopes the blast radius to a single injection (composes with `--json`)
-- [x] **v0.2.0** — fixed `Tracker` context-manager save/restore; `report` gives a clean error on a malformed JSONL line
-- [ ] Auto-instrumentation of popular agent frameworks (LangChain / LlamaIndex tool-call layer)
-- [ ] Multi-agent fleet attribution + cross-session diff
-- [ ] Incident-review dashboard (taint-graph visualization)
-
-<h2 id="license"><img src="https://api.iconify.design/tabler:license.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> License</h2>
-
-MIT, fully open source — no paywall, no hosted tier. File an issue (a real attached trace is gold) on the [issue tracker](https://github.com/SuperMarioYL/tainttrace/issues), or open a PR.
-
-## Share this
-
-```
-TaintTrace — compute a Prompt Injection's blast radius across your Agent's tool graph. Drop in @tracked + taint_source(), replay the trace, get a red quarantine list. MIT, OSS. https://github.com/SuperMarioYL/tainttrace
-```
-
-<p align="center"><sub><a href="./LICENSE">MIT</a> © 2026 SuperMarioYL</sub></p>
+[Apache-2.0](LICENSE)
