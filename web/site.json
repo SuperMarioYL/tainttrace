@@ -104,6 +104,10 @@
           "alt": {
             "zh": "真实执行内置 11 动作场景与一个 3 动作脚本，验证标签传播和报告。动作名称中的网络、提交或发送行为均为模拟，clean 只表示在该记录图中没有追溯到标签。",
             "en": "The real built-in eleven-action scenario and a three-action script exercise propagation and reporting. Network, commit and send names are simulated; clean only means no label was reached in the recorded graph."
+          },
+          "mobile": {
+            "light": "/assets/presentation/process-mobile-light.svg",
+            "dark": "/assets/presentation/process-mobile-dark.svg"
           }
         }
       },
@@ -122,6 +126,10 @@
           "alt": {
             "zh": "label.py 定义标签集合，wrap.py 在同步或异步工具输入输出之间传播标签，Tracker 可记录 JSONL。graph.py 重建依赖图，quarantine.py 计算可达动作并筛选 side_effect。CLI 提供表格、图和 JSON。",
             "en": "label.py defines label sets; wrap.py propagates them through synchronous or asynchronous tool inputs and outputs, with optional JSONL recording by Tracker. graph.py rebuilds dependencies, and quarantine.py computes reachable actions and filters side effects. The CLI supplies tables, graphs and JSON."
+          },
+          "mobile": {
+            "light": "/assets/presentation/architecture-mobile-light.svg",
+            "dark": "/assets/presentation/architecture-mobile-dark.svg"
           }
         }
       },
@@ -140,6 +148,10 @@
           "alt": {
             "zh": "标签传播依赖被包装的数据与调用关系。未插桩路径、未标记输入或丢失标签的转换都可能让图不完整；报告里的 proven clean 不是整个系统的安全证明。",
             "en": "Propagation depends on wrapped data and call relationships. Uninstrumented paths, unlabeled inputs or label-losing conversions can leave the graph incomplete. The report’s proven clean wording is not a security proof for the whole system."
+          },
+          "mobile": {
+            "light": "/assets/presentation/integrations-mobile-light.svg",
+            "dark": "/assets/presentation/integrations-mobile-dark.svg"
           }
         }
       }
