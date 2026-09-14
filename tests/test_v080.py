@@ -284,7 +284,9 @@ def test_report_non_bool_side_effect_exits_2_clean(tmp_path, bad):
     assert "traceback" not in result.output.lower()
     assert "malformed" in result.output.lower()
     assert "side_effect" in result.output
-    assert "bad_side_effect.jsonl" in result.output
+    # rich wraps the file:line at the console width (80 cols on CI), possibly
+    # mid-filename — compare against the unwrapped output.
+    assert "bad_side_effect.jsonl" in result.output.replace("\n", "")
 
     strict = runner.invoke(app, ["report", "--trace", str(trace), "--strict"])
     assert strict.exit_code == 2
