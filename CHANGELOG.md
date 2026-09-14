@@ -4,6 +4,71 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-09-14
+
+Fix-only bump over v0.7.0. Three reproduced bug-hunt fixes (one soundness
+over-taint with two leak channels, one silent wrong-quarantine trace-parsing
+gap, one CLI error-path gap) plus one quality milestone; no new product
+features, no new deps. File-only demand persists (0 gh issues); anchored on
+bug-hunt fixes matching the v0.2–v0.7 precedent.
+
+### Fixed
+- **singleton values no longer carry taint through either channel**
+  (`fix-registry-singleton-identity-collision`, MEDIUM-HIGH). `_TaintRegistry.mark`
+  registered taint by `id(value)` for ANY value, but `None`/`True`/`False` are
+  process-wide singletons and CPython caches ints in `[-5, 256]` — their
+  identity IS their value, so identity-keying them was value-keying by another
+  name, the exact coincidental-equality collision the v0.3
+  `fix-registry-scalar-value-collision` claimed to have removed (its own
+  example, "taint_source(True) taints every True", still fired). The `@tracked`
+  wrapper marks a tool's result with its `out_labels`, so any validator
+  returning a bool flag, any in-place mutator returning `None`, or any status
+  check returning a small int after consuming poisoned input tainted every
+  later call passing that same singleton (`overwrite=True`, `payload=None`,
+  a 200) — wrongly quarantining clean side-effecting writes (a soundness
+  false-positive producing wrong roll-back decisions, reproduced four ways).
+  A new `is_singleton_value` predicate in `label.py` (the taint-granularity
+  leaf module) now guards BOTH channels: `_TaintRegistry.mark` skips singleton
+  registration, and `TaintGraph.infer_value_edges` skips singleton results as
+  value-reuse producer needles (a bool result stringified to "True" and
+  substring-matched every later call passing a True flag, re-opening the
+  over-taint through the graph edge channel after the registry channel was
+  closed — verified while building the fix). No provenance is lost: for a
+  singleton there is no "same object" case distinct from "same value";
+  `ToolCall.out_labels` still records the propagation for the report, and
+  non-cached scalars (e.g. `99999`) keep the documented v0.3 identity
+  behaviour. `src/tainttrace/label.py`, `src/tainttrace/wrap.py`,
+  `src/tainttrace/graph.py`.
+- **a non-boolean `side_effect` in a trace row is now rejected instead of
+  silently coerced** (`fix-trace-side-effect-shape-coercion`, MEDIUM).
+  `call_from_json` did `bool(row.get("side_effect", False))`, so a truthy
+  non-bool such as the string `"false"` silently parsed as `side_effect=True`
+  and moved a tainted read-only call into the quarantine/roll-back set with no
+  error signal (reproduced: `report --json` exited 0 with the clean call
+  listed under quarantine). `_iter_rows` validated every other row field —
+  JSON validity (v0.2), row shape (v0.3), nested label arrays (v0.4),
+  `depends_on` (v0.6) — but not this one. A non-bool `side_effect` now raises
+  a file:line `ValueError` (with the `--strict` raw line) rendered as the
+  clean "Trace malformed" error + exit 2, plus a defensive
+  `_side_effect_from_json` guard for direct `call_from_json` callers; absent/
+  null still defaults to `False`. `src/tainttrace/tracker.py`.
+- **`report --trace <directory>` renders a clean error + exit 2 instead of an
+  uncaught `IsADirectoryError` traceback + exit 1**
+  (`fix-cli-unreadable-trace-error`, LOW-MEDIUM). The CLI's trace-loading
+  handler caught only `FileNotFoundError`; a directory path (an easy
+  tab-completion mistake that typer's option validation passes through)
+  escaped as a raw traceback with exit 1 — and exit 1 falsely signals
+  "quarantined" to a CI gate. A new `OSError` branch (ordered after
+  `FileNotFoundError`, its subclass) renders a bold-red "Cannot read trace"
+  message with the OS detail and exits 2. `src/tainttrace/cli.py`.
+
+### Added
+- **version-lockstep test** (`quality-version-lockstep-test`, quality).
+  The repo carries three hand-bumped version surfaces (`VERSION`,
+  `pyproject.toml` `[project] version`, `tainttrace.__version__`) and no test
+  asserted they agree; a partial bump would ship silently.
+  `tests/test_v080.py::test_version_lockstep` now fails on any drift.
+
 ## [0.7.0] - 2026-09-01
 
 Fix-only bump over v0.6.0. Two HIGH-confidence MEDIUM bug-hunt soundness

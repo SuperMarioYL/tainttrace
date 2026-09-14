@@ -230,6 +230,21 @@ def report(
             + Text("\nRecord one with a Tracker, or run `tainttrace demo`.", style="dim")
         )
         raise typer.Exit(code=2)
+    except OSError as exc:
+        # An existing-but-unreadable trace path (a directory — an easy
+        # tab-completion mistake — or a permission-denied file) raised an
+        # uncaught IsADirectoryError/PermissionError traceback and exit 1,
+        # bypassing the clean bold-red error + exit 2 contract every other
+        # bad-trace input gets (and exit 1 falsely signals "quarantined" to
+        # CI). FileNotFoundError is an OSError subclass, so the friendlier
+        # branch above still wins for a missing path (v0.8 fix:
+        # fix-cli-unreadable-trace-error).
+        err_console.print(
+            Text(f"Cannot read trace: {trace}", style="bold red")
+            + Text(f"\n{exc}", style="red")
+            + Text("\nCheck the path is a readable trace file.", style="dim")
+        )
+        raise typer.Exit(code=2)
     except ValueError as exc:
         err_console.print(
             Text("Trace malformed", style="bold red")

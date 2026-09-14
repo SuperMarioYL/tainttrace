@@ -1,5 +1,5 @@
 {
-  "version": "0.7.0",
+  "version": "0.8.0",
   "scope": "Offline execution of instrumented fixture functions. Named web, write, commit and message actions are simulated; no network call, real file write, commit or notification occurs.",
   "inputs": [
     {

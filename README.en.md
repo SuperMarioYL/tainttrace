@@ -9,7 +9,7 @@
 
 **Explicitly label untrusted inputs, propagate provenance through instrumented tool calls, and report affected side-effecting actions.**
 
-`v0.7.0` · `Python 3.12+` · [Apache-2.0](LICENSE)
+`v0.8.0` · `Python 3.12+` · [Apache-2.0](LICENSE)
 
 [Website](https://tainttrace.lei6393.com) · [Demo record](docs/demo-results.json)
 
@@ -194,7 +194,7 @@ Propagation depends on wrapped data and call relationships. Uninstrumented paths
 
 ## Configuration
 
-side_effect=True explicitly marks effects for review. In v0.7.0, successful report --json exits 0; text mode exits 1 for a nonempty quarantine list, and file/format errors exit 2. --strict includes malformed raw lines in errors, so account for sensitive log content when choosing output destinations.
+side_effect=True explicitly marks effects for review. In v0.8.0, successful report --json exits 0; text mode exits 1 for a nonempty quarantine list, and file/format errors exit 2. --strict includes malformed raw lines in errors, so account for sensitive log content when choosing output destinations.
 
 ## Roadmap and scope
 

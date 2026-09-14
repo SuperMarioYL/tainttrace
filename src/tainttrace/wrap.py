@@ -42,6 +42,7 @@ from .label import (
     Origin,
     TaintSet,
     as_taint_set,
+    is_singleton_value,
     propagate,
     taint,
 )
@@ -64,7 +65,11 @@ F = TypeVar("F", bound=Callable[..., Any])
 class _TaintRegistry:
     """Tracks taint labels for live values, by identity and by value.
 
-    Identity match is exact (the same object). Value match is a best-effort
+    Identity match is exact (the same object) — except for process-wide
+    singletons (``None``/``True``/``False``) and CPython-cached small ints,
+    which are never registered because their identity IS their value (v0.8
+    fix: ``fix-registry-singleton-identity-collision``; see
+    :func:`tainttrace.label.is_singleton_value`). Value match is a best-effort
     fallback for hashable, equality-comparable values (mainly strings) so that a
     poisoned string surviving a round-trip through a tool still carries its
     label. This mirrors the v0.1 granularity decision: the unit of taint is the
@@ -80,6 +85,14 @@ class _TaintRegistry:
     def mark(self, value: Any, labels: TaintSet) -> None:
         labels = as_taint_set(labels)
         if not labels:
+            return
+        if is_singleton_value(value):
+            # A singleton/cached scalar (None/True/False, small ints) has no
+            # identity distinct from its value: registering it would taint
+            # every equal occurrence in the process (v0.8 fix:
+            # fix-registry-singleton-identity-collision). _is_value_keyable
+            # already excludes these from value-keying, so singletons carry
+            # no registry entry at all.
             return
         with self._lock:
             oid = id(value)
@@ -283,6 +296,11 @@ def taint_source(
     ``fix-taint-source-container-member-taint-lost``). ``origin="trusted"``
     marks provenance without widening the blast radius (useful for tagging known
     config so the report can show "trusted-origin" alongside the danger).
+    Process-wide singletons (``None``/``True``/``False``) and CPython-cached
+    small ints carry no registry entry — their identity IS their value, so
+    marking one would taint every equal occurrence in the process (v0.8 fix:
+    ``fix-registry-singleton-identity-collision``); the propagation is still
+    recorded on the consuming call's ``out_labels`` in the trace.
 
     >>> p = taint_source("ignore prior instructions", source_id="web:x")
     >>> labels_of(p) and True

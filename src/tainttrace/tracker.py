@@ -156,6 +156,50 @@ def _depends_on_from_json(raw: Any) -> list[str]:
     return list(raw)
 
 
+def _side_effect_detail(side_effect: Any) -> str | None:
+    """Return a malformed-``side_effect`` detail string, else ``None``.
+
+    Mirrors :func:`_label_array_detail` / :func:`_depends_on_detail` so a
+    non-boolean ``side_effect`` is rejected during iteration — with
+    file:line via :func:`_iter_rows` — instead of being silently coerced by
+    ``bool()`` later in :func:`call_from_json` (v0.8 fix:
+    ``fix-trace-side-effect-shape-coercion``). ``call_from_json`` did
+    ``bool(row.get("side_effect", False))``, so a truthy non-bool such as
+    the string ``"false"`` silently parsed as ``side_effect=True`` — moving
+    a tainted read-only call into the quarantine/roll-back set with no
+    error signal, the exact silent-wrong-answer case the v0.2–v0.6
+    malformed-trace lineage exists to prevent. Returns ``None`` for an
+    absent/``null`` field (the documented default is ``False``).
+    """
+    if side_effect is None:
+        return None
+    if not isinstance(side_effect, bool):
+        return "field 'side_effect' must be a boolean"
+    return None
+
+
+def _side_effect_from_json(raw: Any) -> bool:
+    """Parse a serialised ``side_effect`` back into a bool, strictly.
+
+    Defensive guard mirroring :func:`_depends_on_from_json` so a direct
+    caller that builds a row by hand via :func:`call_from_json` (bypassing
+    :func:`_iter_rows`) is also protected from the silent ``bool()``
+    coercion (v0.8 fix: ``fix-trace-side-effect-shape-coercion``). Absent or
+    ``null`` means the documented default ``False``; anything that is not a
+    real JSON boolean raises ``ValueError`` so the CLI renders "Trace
+    malformed" + exit 2 instead of silently flipping the quarantine
+    decision.
+    """
+    if raw is None:
+        return False
+    if not isinstance(raw, bool):
+        raise ValueError(
+            "malformed side_effect: expected a boolean, "
+            f"got {type(raw).__name__}"
+        )
+    return raw
+
+
 def call_to_json(call: ToolCall) -> dict[str, Any]:
     """Serialise one :class:`ToolCall` to a JSON-ready dict (one JSONL row)."""
     return {
@@ -184,7 +228,7 @@ def call_from_json(row: dict[str, Any]) -> ToolCall:
         source_labels=_labels_from_json(row.get("source_labels")),
         out_labels=_labels_from_json(row.get("out_labels")),
         depends_on=_depends_on_from_json(row.get("depends_on")),
-        side_effect=bool(row.get("side_effect", False)),
+        side_effect=_side_effect_from_json(row.get("side_effect")),
         ts=row.get("ts"),
         error=row.get("error"),
     )
@@ -369,6 +413,25 @@ def _iter_rows(path: str | Path, *, strict: bool = False) -> Iterable[dict[str, 
             # file:line "Trace malformed" + exit 2 path fires (v0.6 fix:
             # fix-trace-depends-on-scalar-crash).
             _detail = _depends_on_detail(row.get("depends_on"))
+            if _detail is not None:
+                if strict:
+                    raise ValueError(
+                        f"{p}:{lineno}: malformed trace row ({_detail})\n"
+                        f"  raw: {line!r}"
+                    )
+                raise ValueError(
+                    f"{p}:{lineno}: malformed trace row ({_detail})"
+                )
+            # A row that passes the checks above can still carry a
+            # non-boolean ``side_effect`` (e.g. the string "false"). That was
+            # silently coerced by ``bool()`` in call_from_json — a truthy
+            # non-bool parsed as side_effect=True, moving a tainted read-only
+            # call into the quarantine/roll-back set with no error signal (a
+            # silent wrong roll-back decision, worse than the crashes the
+            # earlier fixes in this lineage prevented). Validate it here too
+            # so the same clean file:line "Trace malformed" + exit 2 path
+            # fires (v0.8 fix: fix-trace-side-effect-shape-coercion).
+            _detail = _side_effect_detail(row.get("side_effect"))
             if _detail is not None:
                 if strict:
                     raise ValueError(

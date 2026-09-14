@@ -30,6 +30,7 @@ from .label import (
     EMPTY,
     TaintSet,
     as_taint_set,
+    is_singleton_value,
     is_tainted,
     propagate,
 )
@@ -215,6 +216,18 @@ class TaintGraph(BaseModel):
         # Map a normalised result string -> producing call id, in record order.
         producers: list[tuple[str, str]] = []
         for call in self.calls:
+            if is_singleton_value(call.result):
+                # A singleton result (None/True/False, a CPython-cached small
+                # int) carries no value-reuse signal: stringifying it
+                # ("True"/"200") and substring-matching later args would add
+                # systematic false edges — every call with a True flag arg
+                # matches a bool result — the same coincidental collision the
+                # taint registry excludes for singletons (v0.8 fix:
+                # fix-registry-singleton-identity-collision). Without this
+                # the edge heuristic re-opened the over-taint the registry
+                # guard closed. Non-scalar and non-cached-scalar results are
+                # unaffected.
+                continue
             text = _stringify(call.result)
             if text:
                 producers.append((call.id, text))

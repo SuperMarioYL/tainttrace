@@ -19,7 +19,7 @@ the same primitive can label a raw string, a dict, or a recorded call.
 
 from __future__ import annotations
 
-from typing import Iterable, Literal
+from typing import Any, Iterable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -196,6 +196,28 @@ def source_ids(labels: Iterable[TaintLabel] | None) -> set[str]:
     return {label.source_id for label in as_taint_set(labels)}
 
 
+def is_singleton_value(value: Any) -> bool:
+    """True when ``value``'s identity carries no provenance distinct from its value.
+
+    ``None``/``True``/``False`` are process-wide singletons by language
+    guarantee, and CPython caches ints in ``[-5, 256]``, so every occurrence
+    of such a value in the process IS the same object. Keying taint on their
+    identity is therefore value-keying by another name — the
+    coincidental-equality collision the v0.3 ``fix-registry-scalar-value-collision``
+    removed from value-keying (its own rationale: ``taint_source(True)``
+    tainting every later ``True`` is not provenance). Used by the taint
+    registry (skip identity registration) and the value-reuse edge inference
+    (skip singleton results as producer needles) so a tainted bool/None/
+    small-int result cannot leak taint through either channel (v0.8 fix:
+    ``fix-registry-singleton-identity-collision``). Non-cached scalars
+    (e.g. ``99999``) keep the documented v0.3 identity behaviour.
+    """
+    if value is None or isinstance(value, bool):
+        return True
+    # bool is a subclass of int, so this only sees real ints.
+    return isinstance(value, int) and -5 <= value <= 256
+
+
 __all__ = [
     "Origin",
     "TaintLabel",
@@ -210,4 +232,5 @@ __all__ = [
     "is_tainted",
     "untrusted_labels",
     "source_ids",
+    "is_singleton_value",
 ]

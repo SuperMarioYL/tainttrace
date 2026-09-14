@@ -9,7 +9,7 @@
 
 **给不可信输入显式打标，沿已插桩的工具调用传播标签，列出受影响且有副作用的动作。**
 
-`v0.7.0` · `Python 3.12+` · [Apache-2.0](LICENSE)
+`v0.8.0` · `Python 3.12+` · [Apache-2.0](LICENSE)
 
 [Website](https://tainttrace.lei6393.com) · [Demo record](docs/demo-results.json)
 
@@ -194,7 +194,7 @@ $ python examples/presentation_demo.py
 
 ## 配置
 
-side_effect=True 显式标记需关注的副作用。v0.7.0 的 report --json 成功输出时退出 0；文本模式在 quarantine 非空时退出 1，文件/格式错误退出 2。--strict 让损坏行报告原始内容，日志含敏感数据时应注意输出去向。
+side_effect=True 显式标记需关注的副作用。v0.8.0 的 report --json 成功输出时退出 0；文本模式在 quarantine 非空时退出 1，文件/格式错误退出 2。--strict 让损坏行报告原始内容，日志含敏感数据时应注意输出去向。
 
 ## 路线图与范围
 
