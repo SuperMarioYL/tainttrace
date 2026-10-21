@@ -31,12 +31,48 @@ jobs:
           name: tainttrace-dist
           path: dist/*
 
-  # Optional PyPI trusted publishing — enable by configuring an environment
-  # named `pypi` with a Trusted Publisher on PyPI. Skipped if unconfigured.
-  pypi:
+  # Attach the wheel/sdist/checksums to the GitHub Release. Without this the
+  # build job's output only lives as a 90-day workflow artifact (retrievable
+  # from the Actions UI, not a release asset), so every release shipped with
+  # zero downloadable files — while publish_repo.sh delegates this exact step
+  # to the tagged CI run because it has no local dist/ to upload.
+  github-release:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tainttrace-dist
+          path: dist
+      # The release may or may not exist yet: publish_repo.sh pushes the tag
+      # before it creates the release, so this tag-triggered run can get here
+      # first. Create it only if missing, so an existing title/notes survive.
+      # --repo is required: this job has no checkout, so gh cannot infer the
+      # repository from a local git remote.
+      - name: Attach dist to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+                 --title "tainttrace $GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" dist/* --clobber
+          echo "release assets:"
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'
+
+  # Optional PyPI trusted publishing. Publishing is enabled only when BOTH
+  # prerequisites are in place: a Trusted Publisher configured on PyPI for this
+  # repo (environment `pypi`) AND the repository variable PYPI_PUBLISH=true.
+  # Gating on the variable is what makes the job genuinely optional — a plain
+  # ref check is true on every tag, so an unconfigured repo failed the whole
+  # workflow with `invalid-publisher` on every release.
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') && vars.PYPI_PUBLISH == 'true'
     environment: pypi
     permissions:
       id-token: write

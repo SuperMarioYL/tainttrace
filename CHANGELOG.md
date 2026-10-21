@@ -4,6 +4,85 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-10-21
+
+Fix-only bump over v0.8.0. Four reproduced bug-hunt fixes (two in the release
+pipeline, two in the CLI/trace output path) plus one quality milestone; no new
+product features, no new deps. File-only demand persists (0 gh issues, ever);
+anchored on bug-hunt fixes matching the v0.2-v0.8 precedent. The two release
+fixes matter most: the `release` workflow had failed on four consecutive tags
+and every GitHub Release carried zero downloadable assets, so the project was
+not installable from its own releases.
+
+### Fixed
+- **the `release` workflow no longer fails on every tag**
+  (`fix-release-workflow-pypi-job-not-optional`, HIGH). The `pypi` job was
+  commented "Optional PyPI trusted publishing … Skipped if unconfigured" but
+  its gate was `if: startsWith(github.ref, 'refs/tags/v')` — true on every
+  version tag — so with no Trusted Publisher configured on PyPI it always ran
+  and always failed with `invalid-publisher: valid token, but no corresponding
+  publisher`, taking the whole workflow down. Reproduced from live GitHub:
+  `release` = failure on the tag commits of v0.5.0 (1bd8809), v0.6.0 (7f819de),
+  v0.7.0 (759cc22) and v0.8.0 (ac2d607); the failed run 34807824052 names the
+  cause. The job is now gated on the repository variable
+  `vars.PYPI_PUBLISH == 'true'`, so an unconfigured repo genuinely skips it
+  while publishing stays available to anyone who configures both the PyPI
+  Trusted Publisher and that variable. `.github/workflows/release.yml`.
+- **every release now carries its downloadable artifacts**
+  (`fix-release-assets-never-attached`, HIGH). The `build` job built the wheel
+  + sdist + `checksums.txt` and then only called `actions/upload-artifact@v4` —
+  a 90-day workflow artifact retrievable from the Actions UI, not a release
+  asset — and nothing in the workflow ever touched the GitHub Release.
+  Reproduced: `gh api repos/SuperMarioYL/tainttrace/releases` returned
+  `assets: []` for ALL EIGHT releases (v0.1.0 … v0.8.0). `publish_repo.sh`
+  delegates this step to the tagged CI run ("release.yml will attach them on
+  the tagged CI run") because it has no local `dist/`, so the delegation had
+  been silently unfulfilled since v0.1.0. A new `github-release` job
+  downloads the artifact and attaches `dist/*` via the preinstalled `gh` CLI
+  (`gh release view … || gh release create …`, then `gh release upload
+  --clobber`), which is idempotent and correct whether or not `publish_repo.sh`
+  created the release first. `.github/workflows/release.yml`.
+- **the trace error now names a readable, copyable path**
+  (`fix-cli-trace-error-path-hard-wrapped`, MEDIUM). The CLI concatenated the
+  path-bearing detail into ordinary wrapping prose, so rich hard-folded a long
+  absolute path mid-token at the console width (80 on GitHub runners) and the
+  literal filename did not appear in the output at all (reproduced at
+  `COLUMNS=80`: `…bad_side_effect.j\nsonl:1: malformed trace row (…)`). That is
+  why the shipped v0.8.0 tag's own `ci` run was red (run 34807818405, head
+  ac2d607); the follow-up commit 4b85545 normalised newlines in the *test*
+  instead, a band-aid already required in four assertions
+  (tests/test_v060.py, tests/test_v080.py) and valid only while rich's fold
+  inserts no characters at the break. The path-bearing detail line is now
+  printed with `soft_wrap=True` (verified to keep the path contiguous at width
+  80), the message is split into headline / detail / hint, and the four
+  band-aids are reverted to plain substring assertions.
+  `src/tainttrace/cli.py`.
+- **a shared-but-acyclic container is no longer recorded as `"<cyclic>"`**
+  (`fix-reprable-shared-substructure-false-cyclic`, LOW-MEDIUM). `_reprable`'s
+  cycle guard was a global visited set with no removal, so sharing was
+  indistinguishable from cyclicity: `write_file("p", {"a": shared, "b":
+  shared})` recorded `{"a": [1, 2], "b": "<cyclic>"}` and
+  `_reprable([shared, shared])` returned `[[1, 2], '<cyclic>']` — a fabricated
+  cycle in the JSONL trace, the artifact the product exists to produce, which
+  also defeated `infer_value_edges` for the dropped value. The guard is now an
+  ancestor-path set (added on entry, discarded after the members are
+  serialised), so only a container that contains itself on the current path
+  yields the placeholder; true self-referential and mutual cycles still
+  terminate with it. `src/tainttrace/wrap.py`.
+
+### Added
+- **version-lockstep guard extended to every release surface**
+  (`quality-version-lockstep-all-release-surfaces`, quality). The v0.8.0
+  guard asserted only three surfaces (`VERSION`, pyproject `[project] version`,
+  `tainttrace.__version__`), while the release process also hand-bumps
+  `web/site.json` (`meta.content_version` and the footer tag — what the live
+  Pages site renders) and `docs/demo-results.json` (`version`). Both were
+  bumped by hand in the v0.8.0 release commit and neither was asserted, so a
+  partial bump still shipped silently on the two surfaces a user sees outside
+  the package. `tests/test_v080.py::test_version_lockstep` now asserts all
+  five surfaces agree and that `web/site.json` carries no other stale release
+  version. `tests/test_v080.py`.
+
 ## [0.8.0] - 2026-09-14
 
 Fix-only bump over v0.7.0. Three reproduced bug-hunt fixes (one soundness

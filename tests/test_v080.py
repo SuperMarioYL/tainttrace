@@ -284,9 +284,10 @@ def test_report_non_bool_side_effect_exits_2_clean(tmp_path, bad):
     assert "traceback" not in result.output.lower()
     assert "malformed" in result.output.lower()
     assert "side_effect" in result.output
-    # rich wraps the file:line at the console width (80 cols on CI), possibly
-    # mid-filename — compare against the unwrapped output.
-    assert "bad_side_effect.jsonl" in result.output.replace("\n", "")
+    # The path-bearing detail is printed with soft_wrap (v0.9 fix:
+    # fix-cli-trace-error-path-hard-wrapped), so it survives verbatim in the
+    # raw output — no newline-stripping needed.
+    assert "bad_side_effect.jsonl" in result.output
 
     strict = runner.invoke(app, ["report", "--trace", str(trace), "--strict"])
     assert strict.exit_code == 2
@@ -346,8 +347,9 @@ def test_report_directory_trace_exits_2_clean(tmp_path):
     assert result.exit_code == 2
     assert "traceback" not in result.output.lower()
     assert "cannot read trace" in result.output.lower()
-    # rich may wrap the long path across lines; compare unwrapped output.
-    assert str(target) in result.output.replace("\n", "")
+    # The path is printed with soft_wrap (v0.9 fix:
+    # fix-cli-trace-error-path-hard-wrapped), so it survives verbatim.
+    assert str(target) in result.output
 
 
 def test_report_permission_denied_trace_exits_2_clean(tmp_path):
@@ -364,7 +366,7 @@ def test_report_permission_denied_trace_exits_2_clean(tmp_path):
         result = runner.invoke(app, ["report", "--trace", str(locked)])
         assert result.exit_code == 2
         assert "traceback" not in result.output.lower()
-        assert "locked.jsonl" in result.output.replace("\n", "")
+        assert "locked.jsonl" in result.output
     finally:
         locked.chmod(0o644)  # let tmp_path cleanup remove the file
 
@@ -383,11 +385,15 @@ def test_report_missing_trace_message_unchanged(tmp_path):
 
 
 def test_version_lockstep():
-    """The three machine-readable version surfaces must agree: the VERSION
-    file, the pyproject [project] version, and tainttrace.__version__.
+    """Every hand-bumped release version surface must agree: the VERSION file,
+    the pyproject [project] version, tainttrace.__version__, web/site.json
+    meta.content_version, and docs/demo-results.json version.
 
     Each is hand-bumped per release; before v0.8.0 nothing asserted they
-    agreed, so a partial bump would ship silently."""
+    agreed, so a partial bump would ship silently. v0.9.0 extended the guard
+    to the two surfaces a user sees OUTSIDE the package — the published site's
+    content_version and the demo record it renders from (v0.9 milestone:
+    quality-version-lockstep-all-release-surfaces)."""
     from tainttrace import __version__
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -397,8 +403,39 @@ def test_version_lockstep():
     assert match, "pyproject.toml has no [project] version string"
     pyproject_version = match.group(1)
 
-    assert __version__ == version_file == pyproject_version, (
-        "version surfaces drifted: "
-        f"__version__={__version__!r} VERSION={version_file!r} "
-        f"pyproject={pyproject_version!r}"
+    site = json.loads((repo_root / "web" / "site.json").read_text(encoding="utf-8"))
+    site_version = site["meta"]["content_version"]
+    demo = json.loads(
+        (repo_root / "docs" / "demo-results.json").read_text(encoding="utf-8")
     )
+    demo_version = demo["version"]
+
+    surfaces = {
+        "tainttrace.__version__": __version__,
+        "VERSION": version_file,
+        "pyproject.toml": pyproject_version,
+        "web/site.json meta.content_version": site_version,
+        "docs/demo-results.json version": demo_version,
+    }
+    assert len(set(surfaces.values())) == 1, f"version surfaces drifted: {surfaces}"
+
+    # The site package must carry no OTHER stale release version either: the
+    # footer tag (and any future version-bearing string) has to track the same
+    # revision, otherwise the live site advertises the old release.
+    stale = []
+    _walk_versions(site, "", stale)
+    stale = [(path, text) for path, text in stale if __version__ not in text]
+    assert not stale, f"web/site.json carries a stale release version: {stale}"
+
+
+def _walk_versions(node, path, out):
+    """Collect (json-path, value) for every string in ``node`` holding a semver."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            _walk_versions(value, f"{path}/{key}", out)
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            _walk_versions(value, f"{path}[{i}]", out)
+    elif isinstance(node, str) and re.search(r"\d+\.\d+\.\d+", node):
+        out.append((path, node))
+

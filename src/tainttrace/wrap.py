@@ -675,7 +675,7 @@ def _safe_result(value: Any) -> Any:
     return _reprable(value)
 
 
-def _reprable(value: Any, _seen: set[int] | None = None) -> Any:
+def _reprable(value: Any, _ancestors: set[int] | None = None) -> Any:
     """Coerce a value into something JSON-serialisable and edge-inferable.
 
     Scalars pass through (so :meth:`TaintGraph.infer_value_edges` can match
@@ -686,12 +686,12 @@ def _reprable(value: Any, _seen: set[int] | None = None) -> Any:
     Two hardening rules so a real tool argument/result never crashes the
     ``@tracked`` recording path (v0.5 fix: ``fix-reprable-container-crash``):
 
-    * **Cycle guard** — a ``_seen`` set of ``id()``s is threaded through the
-      recursive calls, mirroring :func:`_labels_in_value`. A self-referential
-      list/dict/set (a container that holds itself, directly or transitively)
-      would otherwise recurse without bound and raise ``RecursionError``; on a
-      repeat ``id`` the walk returns a ``"<cyclic>"`` placeholder and
-      terminates.
+    * **Cycle guard** — an ``_ancestors`` set of ``id()``s on the CURRENT
+      recursion path is threaded through the recursive calls. A
+      self-referential list/dict/set (a container that holds itself, directly
+      or transitively) would otherwise recurse without bound and raise
+      ``RecursionError``; on a repeat ``id`` the walk returns a ``"<cyclic>"``
+      placeholder and terminates.
     * **Total-key set sort** — the set/frozenset branch sorts members by
       ``(type(v).__name__, str(v))`` instead of a bare ``sorted()``. A bare sort
       compares heterogeneous member types directly, so a set like ``{1, 'a'}``
@@ -699,26 +699,38 @@ def _reprable(value: Any, _seen: set[int] | None = None) -> Any:
       instances of 'str' and 'int'`` — crashing the wrapper before the call was
       recorded (zero recorded calls). The total key never compares values of
       different types and serialises mixed-type sets deterministically.
+
+    ``_ancestors`` holds only the containers currently being serialised (each
+    ``id`` is discarded once its members are done), not every container ever
+    seen. A global visited set made sharing indistinguishable from cyclicity:
+    ``_reprable([shared, shared])`` recorded the second, perfectly acyclic
+    reference as the literal ``"<cyclic>"``, so a tool called with the same
+    list under two keys (``write_file(p, {"new": rows, "old": rows})``) wrote a
+    fabricated cycle into the trace and lost the real value (v0.9 fix:
+    ``fix-reprable-shared-substructure-false-cyclic``).
     """
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, (list, tuple, dict, set, frozenset)):
-        if _seen is None:
-            _seen = set()
+        if _ancestors is None:
+            _ancestors = set()
         oid = id(value)
-        if oid in _seen:
+        if oid in _ancestors:
             return "<cyclic>"
-        _seen.add(oid)
-        if isinstance(value, dict):
-            return {str(k): _reprable(v, _seen) for k, v in value.items()}
-        if isinstance(value, (list, tuple)):
-            return [_reprable(v, _seen) for v in value]
-        # set / frozenset: sort by a total key so heterogeneous member types
-        # (int/str/None/float/bool) are never compared directly.
-        return sorted(
-            (_reprable(v, _seen) for v in value),
-            key=lambda v: (type(v).__name__, str(v)),
-        )
+        _ancestors.add(oid)
+        try:
+            if isinstance(value, dict):
+                return {str(k): _reprable(v, _ancestors) for k, v in value.items()}
+            if isinstance(value, (list, tuple)):
+                return [_reprable(v, _ancestors) for v in value]
+            # set / frozenset: sort by a total key so heterogeneous member types
+            # (int/str/None/float/bool) are never compared directly.
+            return sorted(
+                (_reprable(v, _ancestors) for v in value),
+                key=lambda v: (type(v).__name__, str(v)),
+            )
+        finally:
+            _ancestors.discard(oid)
     try:
         return repr(value)
     except Exception:  # pragma: no cover - defensive

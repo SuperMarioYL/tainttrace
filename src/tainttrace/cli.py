@@ -239,18 +239,28 @@ def report(
         # CI). FileNotFoundError is an OSError subclass, so the friendlier
         # branch above still wins for a missing path (v0.8 fix:
         # fix-cli-unreadable-trace-error).
+        # soft_wrap: the path is the one thing the user must act on, and rich
+        # otherwise hard-folds a long absolute path mid-token at the console
+        # width (v0.9 fix: fix-cli-trace-error-path-hard-wrapped).
         err_console.print(
-            Text(f"Cannot read trace: {trace}", style="bold red")
-            + Text(f"\n{exc}", style="red")
-            + Text("\nCheck the path is a readable trace file.", style="dim")
+            Text(f"Cannot read trace: {trace}", style="bold red"), soft_wrap=True
+        )
+        err_console.print(Text(f"{exc}", style="red"), soft_wrap=True)
+        err_console.print(
+            Text("Check the path is a readable trace file.", style="dim")
         )
         raise typer.Exit(code=2)
     except ValueError as exc:
+        # The detail line carries the "<path>:<line>:" the user has to fix, so
+        # it is printed with soft_wrap: rich would otherwise fold a long
+        # absolute path mid-token, leaving an error whose filename cannot be
+        # read, copied, or grepped by CI (v0.9 fix:
+        # fix-cli-trace-error-path-hard-wrapped).
+        err_console.print(Text("Trace malformed", style="bold red"))
+        err_console.print(Text(f"{exc}", style="red"), soft_wrap=True)
         err_console.print(
-            Text("Trace malformed", style="bold red")
-            + Text(f": {exc}", style="red")
-            + Text(
-                "\nFix the trace (or re-record it with a Tracker) before computing "
+            Text(
+                "Fix the trace (or re-record it with a Tracker) before computing "
                 "the blast radius.",
                 style="dim",
             )

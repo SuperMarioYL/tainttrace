@@ -275,9 +275,10 @@ def test_report_non_list_depends_on_int_exits_2_clean(tmp_path):
     assert "traceback" not in out
     assert "malformed" in out
     assert "depends_on" in result.output
-    # rich wraps the file:line at the console width (80 cols on CI), possibly
-    # mid-filename — compare against the unwrapped output.
-    assert "bad_depends_int.jsonl" in result.output.replace("\n", "")
+    # The path-bearing detail is printed with soft_wrap (v0.9 fix:
+    # fix-cli-trace-error-path-hard-wrapped), so it survives verbatim in the
+    # raw output — no newline-stripping needed.
+    assert "bad_depends_int.jsonl" in result.output
     assert ":2" in result.output or "line 2" in out
 
 
