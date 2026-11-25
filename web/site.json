@@ -10,7 +10,7 @@
   },
   "meta": {
     "visual_profile": "neon-particle",
-    "content_version": "0.9.0",
+    "content_version": "0.10.0",
     "demo_source": "docs/demo-results.json"
   },
   "hero": {
@@ -74,6 +74,16 @@
       "body": {
         "zh": "受影响只读动作与需复查写入分别展示。",
         "en": "Affected read-only actions and side effects are shown separately."
+      }
+    },
+    {
+      "title": {
+        "zh": "轨迹不丢行",
+        "en": "No lost trace rows"
+      },
+      "body": {
+        "zh": "被取消的调用与非 UTF-8 载荷仍会落盘；空轨迹按错误退出，不会报成全清。",
+        "en": "Cancelled calls and non-UTF-8 payloads still reach the trace; an empty trace exits as an error, never as an all-clear."
       }
     }
   ],
@@ -166,6 +176,16 @@
           "zh": "quarantine 是分析结果列表，接入方决定如何复查或恢复。",
           "en": "quarantine is an analysis list; the integration decides how to review or recover."
         }
+      },
+      {
+        "title": {
+          "zh": "空轨迹不是全清",
+          "en": "An empty trace is not an all-clear"
+        },
+        "body": {
+          "zh": "没有记录到任何动作时，report 以退出码 2 报错；只有记录到的动作全部干净才显示 All clear。",
+          "en": "With no recorded actions, report exits 2 instead of printing All clear; that verdict needs recorded actions to be clean."
+        }
       }
     ]
   },
@@ -251,6 +271,6 @@
     }
   ],
   "footer": {
-    "tag": "0.9.0 · Python 3.12+ · Apache-2.0"
+    "tag": "0.10.0 · Python 3.12+ · Apache-2.0"
   }
 }

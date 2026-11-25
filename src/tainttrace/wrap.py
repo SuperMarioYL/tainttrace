@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import math
 import re
 import threading
 import time
@@ -476,7 +477,7 @@ def tracked(
                 in_labels = _collect_in_labels(args, kwargs)
                 try:
                     result = await func(*args, **kwargs)
-                except Exception as exc:
+                except BaseException as exc:
                     # A side-effecting tool that raised mid-execution (and may
                     # have partially mutated external state) is still recorded
                     # for audit-trail completeness, then re-raised so the agent
@@ -484,6 +485,12 @@ def tracked(
                     # m6_record_failed_tool_calls). out_labels carries in_labels
                     # so a failed side-effecting call whose inputs were tainted
                     # still lands in the blast-radius quarantine set.
+                    # BaseException, not Exception: a cancelled asyncio tool
+                    # (``CancelledError`` — the ordinary timeout/cancel path of
+                    # an async agent) or an interrupted sync tool is exactly
+                    # such a mid-execution abort, and catching only Exception
+                    # dropped it from the trace entirely (v0.10 fix:
+                    # fix-cancelled-call-not-recorded).
                     out_labels = propagate(in_labels)
                     _record_tracked_call(
                         get_recorder(),
@@ -521,11 +528,14 @@ def tracked(
             in_labels = _collect_in_labels(args, kwargs)
             try:
                 result = func(*args, **kwargs)
-            except Exception as exc:
+            except BaseException as exc:
                 # A side-effecting tool that raised mid-execution (and may have
                 # partially mutated external state) is still recorded for
                 # audit-trail completeness, then re-raised so the agent loop
-                # sees the original failure (v0.6: m6_record_failed_tool_calls).
+                # sees the original failure (v0.6: m6_record_failed_tool_calls;
+                # BaseException, not Exception, since v0.10 fix:
+                # fix-cancelled-call-not-recorded — an interrupted tool is the
+                # same mid-execution abort).
                 out_labels = propagate(in_labels)
                 _record_tracked_call(
                     get_recorder(),
@@ -708,8 +718,17 @@ def _reprable(value: Any, _ancestors: set[int] | None = None) -> Any:
     list under two keys (``write_file(p, {"new": rows, "old": rows})``) wrote a
     fabricated cycle into the trace and lost the real value (v0.9 fix:
     ``fix-reprable-shared-substructure-false-cyclic``).
+
+    A non-finite float is recorded as its text form. ``json.dumps`` writes
+    ``nan``/``inf`` as the bare tokens ``NaN``/``Infinity``, which are not JSON
+    (RFC 8259), so a strict parser rejects the whole trace file rather than one
+    row (v0.10 fix: ``fix-trace-nonfinite-float-not-json``).
     """
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None:
+        return value
+    if isinstance(value, float) and not math.isfinite(value):
+        return repr(value)
+    if isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, (list, tuple, dict, set, frozenset)):
         if _ancestors is None:

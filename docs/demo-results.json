@@ -1,5 +1,5 @@
 {
-  "version": "0.9.0",
+  "version": "0.10.0",
   "scope": "Offline execution of instrumented fixture functions. Named web, write, commit and message actions are simulated; no network call, real file write, commit or notification occurs.",
   "inputs": [
     {
@@ -8,7 +8,7 @@
     },
     {
       "path": "src/tainttrace/cli.py",
-      "sha256": "4cc60d04cdeee3237e837afaca7e4aea65e95cfe5ae27951a53b9efd6324c789"
+      "sha256": "4897d6995a8eee9706302d0263de8b97e1a696abd7e4b7ddf134939e03505028"
     }
   ],
   "steps": [

@@ -49,6 +49,12 @@ err_console = Console(stderr=True)
 
 def _headline_text(report: QuarantineReport) -> Text:
     """The colour-coded one-liner the demo screenshot is built around."""
+    if not report.total_actions:
+        # "All clear — 0 of 0" would present no evidence as a verdict. The
+        # `report` command rejects a zero-row trace before it gets here (v0.10
+        # fix: fix-empty-trace-is-not-an-all-clear); this keeps any other
+        # caller of render_report() honest too.
+        return Text("No recorded actions — nothing to analyze.", style="bold yellow")
     if report.is_clean:
         return Text(
             f"All clear — 0 of {report.total_actions} actions tainted.",
@@ -262,6 +268,26 @@ def report(
             Text(
                 "Fix the trace (or re-record it with a Tracker) before computing "
                 "the blast radius.",
+                style="dim",
+            )
+        )
+        raise typer.Exit(code=2)
+
+    if not graph.calls:
+        # A trace with no rows is an unmeasurable input, not a clean run: a
+        # `Tracker(path=...)` truncates its file on construction, so a run that
+        # died before recording anything leaves exactly this file, and
+        # "All clear — 0 of 0 actions tainted" at exit 0 would tell an incident
+        # responder (or a CI gate) that nothing happened (v0.10 fix:
+        # fix-empty-trace-is-not-an-all-clear).
+        err_console.print(
+            Text(f"Trace has no recorded calls: {trace}", style="bold red"),
+            soft_wrap=True,
+        )
+        err_console.print(
+            Text(
+                "Nothing was recorded, so there is no blast radius to report — "
+                "this is not an all-clear.",
                 style="dim",
             )
         )

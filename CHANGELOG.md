@@ -4,6 +4,78 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-11-26
+
+Fix-only bump over v0.9.0. Four reproduced bug-hunt fixes on the recording and
+reporting boundaries; no new product features, no new deps. File-only demand
+persists (0 open gh issues, 0 open PRs, 1 star); anchored on bug-hunt fixes
+matching the v0.2–v0.9 precedent. The two that matter most are a trace that
+loses its most important row and a report that calls an empty trace "all
+clear" — both were silent, and both undercut the post-incident answer the tool
+exists to give.
+
+### Fixed
+- **a payload that cannot be UTF-8 encoded no longer aborts the run or loses
+  its trace row** (`fix-record-lone-surrogate-trace-row`, HIGH).
+  `Tracker.record` wrote `json.dumps(..., ensure_ascii=False)` through a text
+  handle, so a value carrying a lone surrogate — legal in a Python `str`, and
+  exactly what `b"\xff".decode("utf-8", "surrogateescape")` yields for invalid
+  wire bytes — made the write raise `UnicodeEncodeError` *after* the tool had
+  already run: the exception surfaced out of `@tracked` into the agent loop,
+  and the JSONL file kept ZERO bytes for the call that carried the poisoned
+  payload. Reproduced on the shipped v0.9.0 source: one
+  `write_file("notes.md", taint_source(<surrogate-decoded bytes>))` raised and
+  left the trace at 0 bytes. The line is now encoded before it is written and
+  falls back to ASCII-escaped JSON (`\udcff`), so the row always lands as valid
+  UTF-8 JSONL and the value round-trips through `json.loads` unchanged.
+  `src/tainttrace/tracker.py`.
+- **a trace with no recorded calls is an error, not an all-clear**
+  (`fix-empty-trace-is-not-an-all-clear`, HIGH). `report --trace` on a
+  zero-row trace printed `All clear — 0 of 0 actions tainted.` and exited 0, in
+  text and `--json` mode alike — a verdict with no evidence behind it. This is
+  the file a crashed run leaves behind: `Tracker(path=...)` truncates the trace
+  on construction. Reproduced on v0.9.0 with `printf '' > e.jsonl`: exit 0 and
+  "All clear", while `--source` on the same file already errored with
+  `known sources: [none]`. An empty trace is now a bad-input error (bold-red
+  `Trace has no recorded calls: <path>`, exit 2) before either render path, and
+  `render_report` no longer prints a green all-clear over a zero-action report.
+  A trace with recorded-but-clean actions still reports All clear and exits 0.
+  `src/tainttrace/cli.py`.
+- **a cancelled or interrupted tool call is recorded**
+  (`fix-cancelled-call-not-recorded`, MEDIUM). v0.6 records a tool that raises
+  so a partly-executed side effect still reaches the trace, but the wrapper
+  caught `Exception` — and `asyncio.CancelledError` is a `BaseException`. A
+  cancelled async tool (the ordinary timeout/cancel path of an async agent)
+  and an interrupted sync tool were therefore recorded nowhere at all, leaving
+  a side effect that may have partially landed outside the quarantine set.
+  Reproduced on v0.9.0: cancelling a `@tracked` async `write_file` mid-`await`
+  recorded 0 calls; `raise KeyboardInterrupt()` inside a `@tracked` sync tool
+  recorded 0 calls. Both wrappers now catch `BaseException`, record, and
+  re-raise. `src/tainttrace/wrap.py`.
+- **a non-finite float result no longer makes the trace invalid JSON**
+  (`fix-trace-nonfinite-float-not-json`, MEDIUM). A `nan`/`inf` tool result was
+  written as the bare tokens `NaN`/`Infinity`, which are not JSON (RFC 8259):
+  `JSON.parse` rejects the entire file and `jq` silently rewrites the value to
+  `null`, so one such result made the trace unreadable to every consumer other
+  than the tool's own lenient parser. Reproduced on v0.9.0: a `metrics` tool
+  returning `float("nan")` wrote `"result": NaN`. `_reprable` now records a
+  non-finite float as its text form (`"nan"`, `"inf"`, `"-inf"`), so every row
+  stays strict JSON and finite floats are untouched. `src/tainttrace/wrap.py`.
+
+### Added
+- **every release version surface moves together**
+  (`quality-version-lockstep-all-release-surfaces`, quality). All five
+  hand-bumped surfaces now carry `0.10.0` — `VERSION`, pyproject
+  `[project] version`, `tainttrace.__version__`, `web/site.json`
+  `meta.content_version` (plus its footer tag) and `docs/demo-results.json`
+  `version` — and the recorded `src/tainttrace/cli.py` digest in
+  `docs/demo-results.json` was refreshed after re-running both recorded
+  commands and confirming their output is byte-identical. `web/site.json` prose
+  gains the two guarantees this release adds: recorded calls survive
+  cancellation and non-UTF-8 payloads, and an empty trace is an error rather
+  than an all-clear. `tests/test_v080.py::test_version_lockstep` keeps all five
+  surfaces in step.
+
 ## [0.9.0] - 2026-10-21
 
 Fix-only bump over v0.8.0. Four reproduced bug-hunt fixes (two in the release

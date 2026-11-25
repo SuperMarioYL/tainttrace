@@ -270,12 +270,31 @@ class Tracker:
     # ------------------------------------------------------------- Recorder API
 
     def record(self, call: ToolCall) -> None:
-        """Recorder protocol: accumulate a call and (if a path is set) persist it."""
+        """Recorder protocol: accumulate a call and (if a path is set) persist it.
+
+        The row is always written: a value carrying a lone surrogate (a legal
+        ``str``, e.g. ``b"...\\xff...".decode("utf-8", "surrogateescape")`` on
+        untrusted bytes) cannot be UTF-8 encoded, and ``ensure_ascii=False``
+        would put the raw surrogate into the line — raising
+        ``UnicodeEncodeError`` out of ``@tracked`` after the tool had already
+        run, and leaving zero bytes on disk for the one call that carried the
+        poisoned payload (v0.10 fix: ``fix-record-lone-surrogate-trace-row``).
+        Escaping to ASCII instead keeps the row valid UTF-8 JSONL; the value
+        round-trips through ``json.loads`` unchanged.
+        """
         with self._lock:
             self.calls.append(call)
             if self.path is not None:
-                with self.path.open("a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(call_to_json(call), ensure_ascii=False) + "\n")
+                row = call_to_json(call)
+                line = json.dumps(row, ensure_ascii=False)
+                try:
+                    payload = (line + "\n").encode("utf-8")
+                except UnicodeEncodeError:
+                    payload = (json.dumps(row, ensure_ascii=True) + "\n").encode(
+                        "utf-8"
+                    )
+                with self.path.open("ab") as fh:
+                    fh.write(payload)
 
     def next_id(self, name: str) -> str:
         """Mint a unique, readable call id within this run (``write_file-3``)."""
